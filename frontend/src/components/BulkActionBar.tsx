@@ -1,3 +1,6 @@
+import { Play, Square, Trash2, X } from 'lucide-react';
+import { t } from '../i18n';
+
 interface BulkActionBarProps {
   selectedCount: number;
   onStartSelected: () => void;
@@ -21,88 +24,43 @@ export function BulkActionBar({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '10px 16px',
-        backgroundColor: '#131726',
-        border: '1px solid rgba(47, 84, 235, 0.35)',
-        borderRadius: 6,
-        marginBottom: 12,
-        animation: 'fadeIn 0.15s ease-out',
+        padding: '0 16px',
+        height: 40,
+        backgroundColor: 'var(--bg-raised)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-control)',
+        marginBottom: 8,
+        animation: 'fadeIn 120ms ease-out',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span
           style={{
-            backgroundColor: 'var(--primary)',
-            color: '#ffffff',
-            fontSize: 11,
-            fontWeight: 700,
-            padding: '2px 8px',
-            borderRadius: 10,
+            fontSize: 12,
+            fontWeight: 600,
+            color: 'var(--text-primary)',
           }}
         >
-          {selectedCount}
-        </span>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
-          profil dipilih
+          {t.bulk.selectedCount(selectedCount)}
         </span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button
-          className="btn btn-secondary"
-          style={{ padding: '5px 12px', fontSize: 12 }}
-          onClick={onStartSelected}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            style={{ marginRight: 4 }}
-          >
-            <path d="M8 5v14l11-7z" />
-          </svg>
-          Start Selected
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button className="btn btn-ghost" onClick={onStartSelected}>
+          <Play size={12} strokeWidth={1.5} color="var(--status-running)" />
+          <span>{t.bulk.start}</span>
         </button>
-        <button
-          className="btn btn-secondary"
-          style={{ padding: '5px 12px', fontSize: 12 }}
-          onClick={onStopSelected}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            style={{ marginRight: 4 }}
-          >
-            <path d="M6 6h12v12H6z" />
-          </svg>
-          Stop Selected
+        <button className="btn btn-ghost" onClick={onStopSelected}>
+          <Square size={12} strokeWidth={1.5} color="var(--status-error)" />
+          <span>{t.bulk.stop}</span>
         </button>
-        <button
-          className="btn btn-danger"
-          style={{ padding: '5px 12px', fontSize: 12 }}
-          onClick={onTrashSelected}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            style={{ marginRight: 4 }}
-          >
-            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-          </svg>
-          Move to Trash
+        <button className="btn btn-danger" onClick={onTrashSelected}>
+          <Trash2 size={12} strokeWidth={1.5} />
+          <span>{t.bulk.moveToTrash}</span>
         </button>
-        <button
-          className="btn btn-secondary"
-          style={{ padding: '5px 10px', fontSize: 12 }}
-          title="Deselect All"
-          onClick={onDeselectAll}
-        >
-          ✕
+        <button className="btn btn-ghost" onClick={onDeselectAll}>
+          <X size={12} strokeWidth={1.5} />
+          <span>{t.bulk.clear}</span>
         </button>
       </div>
     </div>

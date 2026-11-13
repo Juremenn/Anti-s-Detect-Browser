@@ -1,9 +1,21 @@
-import { useMemo } from 'react';
-import { BulkActionBar } from '../components/BulkActionBar';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Copy,
+  FlaskConical,
+  Folder,
+  Globe,
+  Monitor,
+  MoreHorizontal,
+  Play,
+  Square,
+  Trash2,
+} from 'lucide-react';
 import { Checkbox } from '../components/Checkbox';
 import { EmptyState } from '../components/EmptyState';
 import { StatusPill } from '../components/StatusPill';
+import { t } from '../i18n';
 import { Profile } from '../types';
+import { formatFingerprintSpec, formatProxy } from '../utils/formatters';
 
 interface ProfilesViewProps {
   profiles: Profile[];
@@ -11,15 +23,13 @@ interface ProfilesViewProps {
   onToggleSelect: (name: string, checked: boolean) => void;
   onToggleSelectAll: (checked: boolean) => void;
   onDeselectAll: () => void;
-  onStartProfile: (name: string) => void;
-  onStopProfile: (name: string) => void;
+  onStartProfile: (name: string) => Promise<void> | void;
+  onStopProfile: (name: string) => Promise<void> | void;
   onOpenFolder: (name: string) => void;
   onTrashProfile: (name: string) => void;
-  onBulkStart: () => void;
-  onBulkStop: () => void;
-  onBulkTrash: () => void;
+  onDuplicateProfile?: (name: string) => void;
+  onTestProfile?: (name: string) => void;
   onOpenNewProfileModal: () => void;
-  onQuickProfile: () => void;
   searchQuery: string;
   statusFilter: string;
 }
@@ -29,19 +39,23 @@ export function ProfilesView({
   selectedProfiles,
   onToggleSelect,
   onToggleSelectAll,
-  onDeselectAll,
   onStartProfile,
   onStopProfile,
   onOpenFolder,
   onTrashProfile,
-  onBulkStart,
-  onBulkStop,
-  onBulkTrash,
+  onDuplicateProfile,
+  onTestProfile,
   onOpenNewProfileModal,
-  onQuickProfile,
   searchQuery,
   statusFilter,
 }: ProfilesViewProps) {
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [startingProfiles, setStartingProfiles] = useState<Set<string>>(new Set());
+  const menuRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  // Filter profiles based on search and status
   const filteredProfiles = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return profiles.filter((p) => {
@@ -49,7 +63,8 @@ export function ProfilesView({
         !q ||
         p.name.toLowerCase().includes(q) ||
         (p.webgl_renderer || '').toLowerCase().includes(q) ||
-        (p.tags || []).some((t) => t.toLowerCase().includes(q));
+        (p.tags || []).some((tag) => tag.toLowerCase().includes(q)) ||
+        (p.proxy || '').toLowerCase().includes(q);
 
       const matchStatus =
         statusFilter === 'all'
@@ -68,53 +83,125 @@ export function ProfilesView({
   const someSelected =
     filteredProfiles.some((p) => selectedProfiles.has(p.name)) && !allSelected;
 
-  return (
-    <section style={{ padding: '20px 24px', flex: 1, overflowY: 'auto' }}>
-      <BulkActionBar
-        selectedCount={selectedProfiles.size}
-        onStartSelected={onBulkStart}
-        onStopSelected={onBulkStop}
-        onTrashSelected={onBulkTrash}
-        onDeselectAll={onDeselectAll}
-      />
+  // Close overflow menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setActiveMenu(null);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-      <div
-        style={{
-          backgroundColor: 'var(--bg-card)',
-          border: '1px solid var(--border)',
-          borderRadius: 6,
-          overflow: 'hidden',
-        }}
-      >
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12.5 }}>
+  // Keyboard navigation: Arrow Up/Down, Enter, Delete, Space
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Don't trigger if typing in an input
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFocusedIndex((prev) => (prev < filteredProfiles.length - 1 ? prev + 1 : 0));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFocusedIndex((prev) => (prev > 0 ? prev - 1 : filteredProfiles.length - 1));
+      } else if (e.key === 'Enter') {
+        if (focusedIndex >= 0 && focusedIndex < filteredProfiles.length) {
+          e.preventDefault();
+          const targetProfile = filteredProfiles[focusedIndex];
+          if (targetProfile.is_active) {
+            onStopProfile(targetProfile.name);
+          } else {
+            handleStartWithProgress(targetProfile.name);
+          }
+        }
+      } else if (e.key === 'Delete') {
+        if (focusedIndex >= 0 && focusedIndex < filteredProfiles.length) {
+          e.preventDefault();
+          const targetProfile = filteredProfiles[focusedIndex];
+          if (confirm(t.actions.confirmDelete(targetProfile.name))) {
+            onTrashProfile(targetProfile.name);
+          }
+        }
+      } else if (e.key === ' ') {
+        if (focusedIndex >= 0 && focusedIndex < filteredProfiles.length) {
+          e.preventDefault();
+          const targetProfile = filteredProfiles[focusedIndex];
+          onToggleSelect(targetProfile.name, !selectedProfiles.has(targetProfile.name));
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [focusedIndex, filteredProfiles, selectedProfiles, onToggleSelect, onStopProfile, onTrashProfile]);
+
+  async function handleStartWithProgress(name: string) {
+    setStartingProfiles((prev) => new Set(prev).add(name));
+    try {
+      await onStartProfile(name);
+    } finally {
+      setStartingProfiles((prev) => {
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+    }
+  }
+
+  return (
+    <section
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        backgroundColor: 'var(--bg-base)',
+      }}
+    >
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <table
+          ref={tableRef}
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            textAlign: 'left',
+            fontSize: 12.5,
+          }}
+        >
           <thead>
-            <tr>
-              <th style={{ width: 44, textAlign: 'center', backgroundColor: '#121522', padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
+            <tr
+              style={{
+                height: 36,
+                backgroundColor: 'var(--bg-surface)',
+                borderBottom: '1px solid var(--border)',
+                color: 'var(--text-tertiary)',
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: 0.3,
+                userSelect: 'none',
+              }}
+            >
+              <th style={{ width: 40, textAlign: 'center', padding: '0 8px' }}>
                 <Checkbox
                   checked={allSelected}
                   indeterminate={someSelected}
                   disabled={filteredProfiles.length === 0}
-                  ariaLabel="Pilih Semua Profil"
+                  ariaLabel={t.table.selectAll}
                   onChange={onToggleSelectAll}
                 />
               </th>
-              <th style={{ width: 220, backgroundColor: '#121522', color: 'var(--text-dim)', fontWeight: 600, padding: '10px 14px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
-                Profile Name
-              </th>
-              <th style={{ width: 130, backgroundColor: '#121522', color: 'var(--text-dim)', fontWeight: 600, padding: '10px 14px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
-                Status
-              </th>
-              <th style={{ width: 150, backgroundColor: '#121522', color: 'var(--text-dim)', fontWeight: 600, padding: '10px 14px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
-                Tags
-              </th>
-              <th style={{ width: 160, backgroundColor: '#121522', color: 'var(--text-dim)', fontWeight: 600, padding: '10px 14px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
-                Proxy
-              </th>
-              <th style={{ backgroundColor: '#121522', color: 'var(--text-dim)', fontWeight: 600, padding: '10px 14px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
-                Fingerprint Specs
-              </th>
-              <th style={{ width: 160, textAlign: 'right', backgroundColor: '#121522', color: 'var(--text-dim)', fontWeight: 600, padding: '10px 14px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
-                Action
+              <th style={{ minWidth: 180, padding: '0 12px' }}>{t.table.name}</th>
+              <th style={{ width: 110, padding: '0 12px' }}>{t.table.status}</th>
+              <th style={{ minWidth: 260, padding: '0 12px' }}>{t.table.fingerprint}</th>
+              <th style={{ width: 160, padding: '0 12px' }}>{t.table.proxy}</th>
+              <th style={{ width: 140, padding: '0 12px' }}>{t.table.tags}</th>
+              <th style={{ width: 100, textAlign: 'right', padding: '0 16px' }}>
+                {t.table.actions}
               </th>
             </tr>
           </thead>
@@ -123,158 +210,329 @@ export function ProfilesView({
               <tr>
                 <td colSpan={7} style={{ padding: 0 }}>
                   <EmptyState
-                    title={profiles.length === 0 ? 'Belum Ada Profil Anti-Detect' : 'Tidak Ada Profil yang Cocok'}
+                    title={
+                      profiles.length === 0
+                        ? t.empty.noProfilesTitle
+                        : t.empty.noResultsTitle
+                    }
                     description={
                       profiles.length === 0
-                        ? 'Belum ada profil browser yang tersimpan. Klik tombol di bawah untuk membuat profil pertama Anda.'
-                        : 'Tidak ada profil yang cocok dengan kriteria pencarian atau filter yang dipilih.'
+                        ? t.empty.noProfilesDesc
+                        : t.empty.noResultsDesc
                     }
                     actions={
                       profiles.length === 0 ? (
-                        <>
-                          <button className="btn btn-primary" onClick={onOpenNewProfileModal}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-                            </svg>
-                            New Profile
-                          </button>
-                          <button className="btn btn-secondary" onClick={onQuickProfile}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M7 2v11h3v9l7-12h-4l4-8z" />
-                            </svg>
-                            Quick Profile
-                          </button>
-                        </>
+                        <button
+                          className="btn btn-primary"
+                          onClick={onOpenNewProfileModal}
+                        >
+                          {t.empty.createFirstProfile}
+                        </button>
                       ) : undefined
                     }
                   />
                 </td>
               </tr>
             ) : (
-              filteredProfiles.map((p) => {
+              filteredProfiles.map((p, idx) => {
                 const isSelected = selectedProfiles.has(p.name);
+                const isFocused = idx === focusedIndex;
+                const isStarting = startingProfiles.has(p.name);
                 const isMac = (p.platform || '').toLowerCase().includes('mac');
+                const isMenuOpen = activeMenu === p.name;
+                const specSummary = formatFingerprintSpec(p);
+                const proxyInfo = formatProxy(p.proxy);
+
+                // Filter out "Default" tag when it's the only one
+                const visibleTags = (p.tags || []).filter(
+                  (tag) => tag.toLowerCase() !== 'default'
+                );
 
                 return (
                   <tr
                     key={p.name}
+                    tabIndex={0}
+                    onFocus={() => setFocusedIndex(idx)}
                     style={{
+                      height: 44,
                       borderBottom: '1px solid var(--border)',
-                      backgroundColor: isSelected ? 'rgba(47, 84, 235, 0.08)' : 'transparent',
-                      transition: 'background-color 0.12s ease',
+                      backgroundColor: isSelected
+                        ? 'var(--accent-subtle)'
+                        : isFocused
+                        ? 'var(--bg-hover-row)'
+                        : 'transparent',
+                      transition: 'background-color 120ms ease-out',
+                      outline: 'none',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected && !isFocused) {
+                        e.currentTarget.style.backgroundColor = 'var(--bg-hover-row)';
+                      }
+                      const actionGroup = e.currentTarget.querySelector('.row-actions') as HTMLElement;
+                      if (actionGroup) actionGroup.style.opacity = '1';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected && !isFocused) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                      const actionGroup = e.currentTarget.querySelector('.row-actions') as HTMLElement;
+                      if (actionGroup && !isMenuOpen) actionGroup.style.opacity = '0.6';
                     }}
                   >
-                    <td style={{ textAlign: 'center', padding: '10px 8px' }}>
+                    {/* Checkbox */}
+                    <td style={{ textAlign: 'center', padding: '0 8px' }}>
                       <Checkbox
                         checked={isSelected}
-                        ariaLabel={`Pilih profil ${p.name}`}
+                        ariaLabel={t.table.selectRow(p.name)}
                         onChange={(checked) => onToggleSelect(p.name, checked)}
                       />
                     </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, color: '#ffffff' }}>
+
+                    {/* Name + Monospace Seed */}
+                    <td style={{ padding: '0 12px', whiteSpace: 'nowrap' }}>
+                      <div
+                        style={{
+                          fontWeight: 500,
+                          fontSize: 13,
+                          color: 'var(--text-primary)',
+                          lineHeight: 1.2,
+                        }}
+                      >
                         {p.name}
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'monospace' }}>
-                        Seed: {p.canvas_seed || '-'}
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--text-tertiary)',
+                          lineHeight: 1.2,
+                          marginTop: 2,
+                        }}
+                      >
+                        {t.table.seed(p.canvas_seed || '-')}
                       </div>
                     </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <StatusPill isActive={p.is_active} pid={p.pid} />
+
+                    {/* Status Dot + Label (Inline progress on starting) */}
+                    <td style={{ padding: '0 12px', whiteSpace: 'nowrap' }}>
+                      <StatusPill
+                        isActive={p.is_active}
+                        isStarting={isStarting}
+                        pid={p.pid}
+                      />
                     </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      {p.tags && p.tags.length > 0 ? (
-                        <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', maxWidth: 180 }}>
-                          {p.tags.map((t) => (
+
+                    {/* Fingerprint: OS Icon + Parsed Short Single-Line Spec + Full Tooltip */}
+                    <td
+                      style={{
+                        padding: '0 12px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                      title={p.webgl_renderer || 'WebGL Hardware Profile'}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        {isMac ? (
+                          <Monitor size={14} strokeWidth={1.5} color="var(--text-secondary)" />
+                        ) : (
+                          <Monitor size={14} strokeWidth={1.5} color="var(--text-secondary)" />
+                        )}
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: 'var(--text-secondary)',
+                            fontFamily: 'var(--font-sans)',
+                          }}
+                        >
+                          {specSummary}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Proxy: Direct in tertiary text; Real proxy in mono host:port */}
+                    <td style={{ padding: '0 12px', whiteSpace: 'nowrap' }}>
+                      {proxyInfo.isDirect ? (
+                        <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                          {t.table.directProxy}
+                        </span>
+                      ) : (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Globe size={13} strokeWidth={1.5} color="var(--text-secondary)" />
+                          <span
+                            className="mono-tech"
+                            style={{ fontSize: 11.5 }}
+                            title={p.proxy || ''}
+                          >
+                            {proxyInfo.hostPort}
+                          </span>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Tags: Hidden when only "Default", subtle 1px border chips otherwise */}
+                    <td style={{ padding: '0 12px', whiteSpace: 'nowrap' }}>
+                      {visibleTags.length > 0 ? (
+                        <div style={{ display: 'inline-flex', gap: 4, flexWrap: 'nowrap' }}>
+                          {visibleTags.slice(0, 2).map((tag) => (
                             <span
-                              key={t}
+                              key={tag}
                               style={{
-                                display: 'inline-block',
-                                whiteSpace: 'nowrap',
-                                backgroundColor: '#1a2238',
-                                color: '#93c5fd',
-                                border: '1px solid rgba(147, 197, 253, 0.18)',
-                                padding: '2px 7px',
-                                borderRadius: 4,
                                 fontSize: 11,
-                                fontWeight: 500,
+                                color: 'var(--text-secondary)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 4,
+                                padding: '1px 6px',
                                 lineHeight: 1.3,
                               }}
                             >
-                              {t}
+                              {tag}
                             </span>
                           ))}
+                          {visibleTags.length > 2 && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                color: 'var(--text-tertiary)',
+                                padding: '1px 4px',
+                              }}
+                            >
+                              +{visibleTags.length - 2}
+                            </span>
+                          )}
                         </div>
-                      ) : (
-                        <span style={{ color: 'var(--text-dim)' }}>-</span>
-                      )}
+                      ) : null}
                     </td>
-                    <td style={{ padding: '12px 14px', color: p.proxy ? 'var(--text-main)' : 'var(--text-dim)' }}>
-                      {p.proxy || 'Direct'}
-                    </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        {isMac ? (
-                          <svg viewBox="0 0 170 170" width="20" height="20" fill="#94a3b8" style={{ flexShrink: 0 }}>
-                            <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.7-3.08-7.77-7.92-12.23-14.51-6.19-9.17-11.05-19.65-14.59-31.44-3.53-11.8-5.3-23.01-5.3-33.64 0-14.04 3.65-25.75 10.95-35.15 7.3-9.4 16.51-14.18 27.63-14.35 5.18 0 10.77 1.43 16.76 4.31 5.99 2.87 9.87 4.38 11.64 4.54 1.54 0 5.49-1.57 11.86-4.71 6.37-3.14 11.97-4.47 16.8-4.01 12.82.78 22.95 5.75 30.38 14.93-11.19 6.78-16.65 16.14-16.37 28.09.28 9.58 3.99 17.58 11.13 24 7.14 6.42 15.69 10.05 25.64 10.88-2.13 6.64-4.87 13.52-8.21 20.65zM119.22 31.81c0-7.35 2.65-14.4 7.95-21.14 5.3-6.75 11.97-10.67 20.02-11.77.14 1.13.21 2.14.21 3.03 0 7.34-2.78 14.36-8.34 21.05-5.56 6.7-12.27 10.46-20.13 11.27-.22-.81-.33-1.63-.33-2.44z" />
-                          </svg>
-                        ) : (
-                          <svg viewBox="0 0 88 88" width="20" height="20" fill="#38bdf8" style={{ flexShrink: 0 }}>
-                            <path d="M0 12.4L35.7 7.5V42H0V12.4zM0 45.6H35.7V80.1L0 75.3V45.6zM39.4 7V42H87.3V0L39.4 7zM39.4 45.6H87.3V87.6L39.4 80.6V45.6z" />
-                          </svg>
-                        )}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <div style={{ fontWeight: 500, color: '#e2e8f0', fontSize: 12 }}>
-                            {p.webgl_renderer || 'GPU'}
-                          </div>
-                          <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                            {p.hardware_concurrency || 8} Cores | {p.device_memory || 8} GB | {p.screen_width || 1920}x{p.screen_height || 1080}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '12px 14px' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+
+                    {/* Row Actions: 28px ghost Start/Stop button + Overflow Menu */}
+                    <td style={{ textAlign: 'right', padding: '0 16px', whiteSpace: 'nowrap' }}>
+                      <div
+                        className="row-actions"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          opacity: isMenuOpen ? 1 : 0.6,
+                          transition: 'opacity 140ms ease-out',
+                        }}
+                      >
                         {p.is_active ? (
                           <button
-                            className="btn btn-danger"
-                            style={{ padding: '4px 10px', fontSize: 11.5 }}
+                            className="btn btn-ghost"
+                            style={{
+                              height: 28,
+                              padding: '0 8px',
+                              fontSize: 12,
+                              color: 'var(--status-error)',
+                            }}
+                            title={t.actions.stop}
                             onClick={() => onStopProfile(p.name)}
                           >
-                            Stop
+                            <Square size={11} strokeWidth={2} color="var(--status-error)" />
+                            <span>{t.actions.stop}</span>
                           </button>
                         ) : (
                           <button
-                            className="btn"
+                            className="btn btn-ghost"
                             style={{
-                              backgroundColor: 'var(--success)',
-                              color: '#ffffff',
-                              padding: '4px 10px',
-                              fontSize: 11.5,
+                              height: 28,
+                              padding: '0 8px',
+                              fontSize: 12,
                             }}
-                            onClick={() => onStartProfile(p.name)}
+                            title={t.actions.start}
+                            disabled={isStarting}
+                            onClick={() => handleStartWithProgress(p.name)}
                           >
-                            Start
+                            <Play size={11} strokeWidth={2} color="var(--status-running)" />
+                            <span>{t.actions.start}</span>
                           </button>
                         )}
-                        <button
-                          className="btn-icon"
-                          title="Buka Folder Data"
-                          onClick={() => onOpenFolder(p.name)}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
-                          </svg>
-                        </button>
-                        <button
-                          className="btn-icon danger"
-                          title="Pindahkan ke Tempat Sampah"
-                          onClick={() => onTrashProfile(p.name)}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-                          </svg>
-                        </button>
+
+                        {/* Overflow ⋯ Menu */}
+                        <div style={{ position: 'relative', display: 'inline-block' }}>
+                          <button
+                            className="btn-icon"
+                            title={t.actions.more}
+                            onClick={() => setActiveMenu(isMenuOpen ? null : p.name)}
+                            style={{ width: 28, height: 28 }}
+                          >
+                            <MoreHorizontal size={15} strokeWidth={1.5} />
+                          </button>
+
+                          {isMenuOpen && (
+                            <div
+                              ref={menuRef}
+                              className="popover-menu"
+                              style={{
+                                position: 'absolute',
+                                right: 0,
+                                top: 'calc(100% + 4px)',
+                                width: 160,
+                                zIndex: 100,
+                              }}
+                            >
+                              <button
+                                className="menu-item"
+                                onClick={() => {
+                                  setActiveMenu(null);
+                                  onOpenFolder(p.name);
+                                }}
+                              >
+                                <Folder size={13} strokeWidth={1.5} />
+                                <span>{t.actions.openFolder}</span>
+                              </button>
+
+                              {onDuplicateProfile && (
+                                <button
+                                  className="menu-item"
+                                  onClick={() => {
+                                    setActiveMenu(null);
+                                    onDuplicateProfile(p.name);
+                                  }}
+                                >
+                                  <Copy size={13} strokeWidth={1.5} />
+                                  <span>{t.actions.duplicate}</span>
+                                </button>
+                              )}
+
+                              <button
+                                className="menu-item"
+                                onClick={() => {
+                                  setActiveMenu(null);
+                                  if (onTestProfile) {
+                                    onTestProfile(p.name);
+                                  } else {
+                                    handleStartWithProgress(p.name);
+                                  }
+                                }}
+                              >
+                                <FlaskConical size={13} strokeWidth={1.5} />
+                                <span>{t.actions.testFingerprint}</span>
+                              </button>
+
+                              <div
+                                style={{
+                                  height: 1,
+                                  backgroundColor: 'var(--border)',
+                                  margin: '4px 0',
+                                }}
+                              />
+
+                              <button
+                                className="menu-item danger"
+                                onClick={() => {
+                                  setActiveMenu(null);
+                                  if (confirm(t.actions.confirmDelete(p.name))) {
+                                    onTrashProfile(p.name);
+                                  }
+                                }}
+                              >
+                                <Trash2 size={13} strokeWidth={1.5} />
+                                <span>{t.actions.delete}</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -283,6 +541,29 @@ export function ProfilesView({
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Table Footer Summary */}
+      <div
+        style={{
+          height: 32,
+          padding: '0 16px',
+          borderTop: '1px solid var(--border)',
+          backgroundColor: 'var(--bg-surface)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: 11,
+          color: 'var(--text-tertiary)',
+          flexShrink: 0,
+        }}
+      >
+        <span>
+          {filteredProfiles.length} of {profiles.length} profiles displayed
+        </span>
+        <span>
+          {profiles.filter((p) => p.is_active).length} active
+        </span>
       </div>
     </section>
   );

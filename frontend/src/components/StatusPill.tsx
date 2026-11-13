@@ -1,23 +1,23 @@
+import { t } from '../i18n';
+
 interface StatusPillProps {
   isActive?: boolean;
+  isStarting?: boolean;
   pid?: number | null;
 }
 
-export function StatusPill({ isActive = false, pid }: StatusPillProps) {
-  if (isActive) {
+export function StatusPill({ isActive = false, isStarting = false, pid }: StatusPillProps) {
+  if (isStarting) {
     return (
       <span
         style={{
           display: 'inline-flex',
           alignItems: 'center',
           gap: 6,
-          padding: '3px 8px',
-          borderRadius: 12,
-          fontSize: 11,
-          fontWeight: 600,
-          backgroundColor: 'rgba(16, 185, 129, 0.12)',
-          color: '#34d399',
-          border: '1px solid rgba(16, 185, 129, 0.3)',
+          fontSize: 12,
+          fontWeight: 500,
+          color: 'var(--text-secondary)',
+          userSelect: 'none',
         }}
       >
         <span
@@ -25,10 +25,49 @@ export function StatusPill({ isActive = false, pid }: StatusPillProps) {
             width: 6,
             height: 6,
             borderRadius: '50%',
-            backgroundColor: '#10b981',
+            backgroundColor: 'var(--accent)',
+            animation: 'pulse 1s infinite alternate',
           }}
         />
-        Aktif {pid ? `(PID ${pid})` : ''}
+        {t.status.starting}
+      </span>
+    );
+  }
+
+  if (isActive) {
+    return (
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          fontSize: 12,
+          fontWeight: 500,
+          color: 'var(--text-primary)',
+          userSelect: 'none',
+        }}
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            backgroundColor: 'var(--status-running)',
+            flexShrink: 0,
+          }}
+        />
+        <span>{t.status.running}</span>
+        {pid ? (
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--text-tertiary)',
+            }}
+          >
+            ({pid})
+          </span>
+        ) : null}
       </span>
     );
   }
@@ -39,13 +78,10 @@ export function StatusPill({ isActive = false, pid }: StatusPillProps) {
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
-        padding: '3px 8px',
-        borderRadius: 12,
-        fontSize: 11,
-        fontWeight: 600,
-        backgroundColor: 'rgba(148, 163, 184, 0.08)',
-        color: '#94a3b8',
-        border: '1px solid rgba(148, 163, 184, 0.18)',
+        fontSize: 12,
+        fontWeight: 500,
+        color: 'var(--text-tertiary)',
+        userSelect: 'none',
       }}
     >
       <span
@@ -53,10 +89,11 @@ export function StatusPill({ isActive = false, pid }: StatusPillProps) {
           width: 6,
           height: 6,
           borderRadius: '50%',
-          backgroundColor: '#94a3b8',
+          backgroundColor: 'var(--status-idle)',
+          flexShrink: 0,
         }}
       />
-      Siap
+      {t.status.idle}
     </span>
   );
 }

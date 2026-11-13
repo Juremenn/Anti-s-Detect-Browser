@@ -73,3 +73,4 @@ export interface ToastMessage {
   message: string;
   type?: 'info' | 'success' | 'error';
 }
+

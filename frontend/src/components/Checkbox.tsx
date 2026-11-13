@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Check, Minus } from 'lucide-react';
 
 interface CheckboxProps {
   checked: boolean;
@@ -23,6 +24,8 @@ export function Checkbox({
     }
   }, [indeterminate]);
 
+  const isCheckedOrIndeterminate = checked || indeterminate;
+
   return (
     <label
       style={{
@@ -32,8 +35,8 @@ export function Checkbox({
         cursor: disabled ? 'not-allowed' : 'pointer',
         userSelect: 'none',
         position: 'relative',
-        width: 18,
-        height: 18,
+        width: 16,
+        height: 16,
       }}
     >
       <input
@@ -44,58 +47,65 @@ export function Checkbox({
         aria-label={ariaLabel}
         onChange={(e) => onChange(e.target.checked)}
         style={{
-          appearance: 'none',
-          WebkitAppearance: 'none',
-          width: 17,
-          height: 17,
+          position: 'absolute',
+          opacity: 0,
+          width: 0,
+          height: 0,
           margin: 0,
-          backgroundColor: checked || indeterminate ? 'var(--primary)' : '#121522',
-          border: `1.5px solid ${
-            checked || indeterminate ? 'var(--primary)' : '#2d354d'
-          }`,
-          borderRadius: 4,
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          outline: 'none',
-          transition: 'all 0.12s ease',
-          display: 'grid',
-          placeContent: 'center',
+          pointerEvents: 'none',
         }}
       />
-      {checked && !indeterminate && (
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#ffffff"
-          strokeWidth="3.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{
-            position: 'absolute',
-            width: 10,
-            height: 10,
-            pointerEvents: 'none',
-          }}
-        >
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      )}
-      {indeterminate && (
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#ffffff"
-          strokeWidth="4"
-          strokeLinecap="round"
-          style={{
-            position: 'absolute',
-            width: 9,
-            height: 9,
-            pointerEvents: 'none',
-          }}
-        >
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-      )}
+      <div
+        tabIndex={disabled ? -1 : 0}
+        role="checkbox"
+        aria-checked={indeterminate ? 'mixed' : checked}
+        onKeyDown={(e) => {
+          if (!disabled && (e.key === ' ' || e.key === 'Enter')) {
+            e.preventDefault();
+            onChange(!checked);
+          }
+        }}
+        style={{
+          width: 15,
+          height: 15,
+          borderRadius: 4,
+          backgroundColor: isCheckedOrIndeterminate ? 'var(--accent)' : 'var(--bg-surface)',
+          border: `1px solid ${isCheckedOrIndeterminate ? 'var(--accent)' : 'var(--border)'}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'all 120ms ease-out',
+          outline: 'none',
+        }}
+        onMouseEnter={(e) => {
+          if (!disabled && !isCheckedOrIndeterminate) {
+            e.currentTarget.style.borderColor = 'var(--text-secondary)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!disabled && !isCheckedOrIndeterminate) {
+            e.currentTarget.style.borderColor = 'var(--border)';
+          }
+        }}
+        onFocus={(e) => {
+          if (!disabled) {
+            e.currentTarget.style.boxShadow = '0 0 0 2px var(--accent-ring)';
+            e.currentTarget.style.borderColor = 'var(--accent)';
+          }
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.boxShadow = 'none';
+          if (!isCheckedOrIndeterminate) {
+            e.currentTarget.style.borderColor = 'var(--border)';
+          }
+        }}
+      >
+        {indeterminate ? (
+          <Minus size={11} strokeWidth={2.5} color="#FFFFFF" />
+        ) : checked ? (
+          <Check size={11} strokeWidth={2.5} color="#FFFFFF" />
+        ) : null}
+      </div>
     </label>
   );
 }

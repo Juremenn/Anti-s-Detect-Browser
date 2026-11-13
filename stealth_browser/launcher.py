@@ -184,7 +184,12 @@ class StealthLauncher:
         print(f"[*] Target URL:         {target_url}")
         print("=" * 65)
 
-        proc = subprocess.Popen(args)
+        env = os.environ.copy()
+        env["GOOGLE_API_KEY"] = "no"
+        env["GOOGLE_DEFAULT_CLIENT_ID"] = "no"
+        env["GOOGLE_DEFAULT_CLIENT_SECRET"] = "no"
+
+        proc = subprocess.Popen(args, env=env)
         return proc
 
 

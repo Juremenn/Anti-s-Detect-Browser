@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Modal } from '../components/Modal';
+import { t } from '../i18n';
 import { CreateProfilePayload, Preset } from '../types';
 
 interface CreateProfileModalProps {
@@ -21,7 +22,7 @@ export function CreateProfileModal({
 }: CreateProfileModalProps) {
   const [name, setName] = useState(initialName);
   const [preset, setPreset] = useState(defaultPresetIdx);
-  const [tags, setTags] = useState('Utama, Kerja');
+  const [tags, setTags] = useState('Primary, Work');
   const [proxy, setProxy] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -39,7 +40,7 @@ export function CreateProfileModal({
     e.preventDefault();
     const cleanName = name.trim();
     if (!cleanName) {
-      setError('Nama profil wajib diisi.');
+      setError(t.modal.nameRequired);
       return;
     }
 
@@ -48,7 +49,7 @@ export function CreateProfileModal({
     try {
       const parsedTags = tags
         .split(',')
-        .map((t) => t.trim())
+        .map((tag) => tag.trim())
         .filter(Boolean);
 
       await onSubmit({
@@ -68,17 +69,17 @@ export function CreateProfileModal({
   return (
     <Modal
       isOpen={isOpen}
-      title="Create New Profile"
+      title={t.modal.createProfileTitle}
       onClose={onClose}
       footer={
         <>
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-ghost"
             onClick={onClose}
             disabled={loading}
           >
-            Cancel
+            {t.modal.cancel}
           </button>
           <button
             type="button"
@@ -86,113 +87,81 @@ export function CreateProfileModal({
             onClick={handleSubmit}
             disabled={loading}
           >
-            {loading ? 'Creating...' : 'Create Profile'}
+            {loading ? t.modal.creating : t.modal.create}
           </button>
         </>
       }
     >
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {error && (
           <div
             style={{
-              padding: '8px 12px',
-              backgroundColor: 'rgba(239, 68, 68, 0.15)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              borderRadius: 5,
+              padding: '6px 10px',
+              backgroundColor: 'rgba(242, 85, 90, 0.1)',
+              border: '1px solid var(--status-error)',
+              borderRadius: 'var(--radius-control)',
               fontSize: 12,
-              color: '#f87171',
+              color: 'var(--status-error)',
             }}
           >
             {error}
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)' }}>
-            Profile Name
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>
+            {t.modal.profileName}
           </label>
           <input
             type="text"
+            className="input-field"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Work_Identity_1"
-            style={{
-              backgroundColor: '#0e111b',
-              border: '1px solid var(--border)',
-              borderRadius: 5,
-              padding: '8px 12px',
-              fontSize: 13,
-              color: 'var(--text-main)',
-              outline: 'none',
-            }}
+            placeholder={t.modal.profileNamePlaceholder}
           />
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)' }}>
-            Hardware & OS Preset
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>
+            {t.modal.preset}
           </label>
           <select
+            className="input-field"
             value={preset}
             onChange={(e) => setPreset(parseInt(e.target.value, 10))}
-            style={{
-              backgroundColor: '#0e111b',
-              border: '1px solid var(--border)',
-              borderRadius: 5,
-              padding: '8px 12px',
-              fontSize: 12.5,
-              color: 'var(--text-main)',
-              outline: 'none',
-              cursor: 'pointer',
-            }}
+            style={{ cursor: 'pointer' }}
           >
             {presets.map((p, idx) => (
-              <option key={idx} value={idx}>
-                {p.platform} | {p.gpu_renderer} ({p.cores}-Core, {p.memory_gb}GB)
+              <option key={idx} value={idx} style={{ backgroundColor: 'var(--bg-surface)' }}>
+                {p.label} ({p.platform} · {p.cores}C/{p.memory_gb}GB)
               </option>
             ))}
           </select>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)' }}>
-            Tags (comma-separated)
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>
+            {t.modal.tags}
           </label>
           <input
             type="text"
+            className="input-field"
             value={tags}
             onChange={(e) => setTags(e.target.value)}
-            placeholder="e.g. Toko, Ads, Social"
-            style={{
-              backgroundColor: '#0e111b',
-              border: '1px solid var(--border)',
-              borderRadius: 5,
-              padding: '8px 12px',
-              fontSize: 13,
-              color: 'var(--text-main)',
-              outline: 'none',
-            }}
+            placeholder={t.modal.tagsPlaceholder}
           />
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)' }}>
-            Proxy URL (Optional)
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>
+            {t.modal.proxy}
           </label>
           <input
             type="text"
+            className="input-field"
             value={proxy}
             onChange={(e) => setProxy(e.target.value)}
-            placeholder="socks5://user:pass@host:port"
-            style={{
-              backgroundColor: '#0e111b',
-              border: '1px solid var(--border)',
-              borderRadius: 5,
-              padding: '8px 12px',
-              fontSize: 13,
-              color: 'var(--text-main)',
-              outline: 'none',
-            }}
+            placeholder={t.modal.proxyPlaceholder}
           />
         </div>
       </form>

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Save } from 'lucide-react';
 import { Checkbox } from '../components/Checkbox';
+import { t } from '../i18n';
 import { AppSettings } from '../types';
 
 interface SettingsViewProps {
@@ -35,160 +37,149 @@ export function SettingsView({ settings, onSave }: SettingsViewProps) {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Header */}
       <header
         style={{
-          height: 60,
+          height: 48,
           borderBottom: '1px solid var(--border)',
+          backgroundColor: 'var(--bg-surface)',
           display: 'flex',
           alignItems: 'center',
-          padding: '0 24px',
+          justifyContent: 'space-between',
+          padding: '0 16px',
           flexShrink: 0,
         }}
       >
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: '#ffffff' }}>Settings</h2>
+        <h2 style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: -0.2 }}>
+          {t.settings.title}
+        </h2>
+        <button
+          className="btn btn-primary"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          <Save size={13} strokeWidth={2} />
+          <span>{saving ? t.settings.saving : t.settings.saveChanges}</span>
+        </button>
       </header>
 
-      <section style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
+      {/* Settings Form */}
+      <div style={{ padding: '16px', flex: 1, overflowY: 'auto' }}>
         <form
           onSubmit={handleSave}
           style={{
-            maxWidth: 640,
+            maxWidth: 600,
             display: 'flex',
             flexDirection: 'column',
-            gap: 20,
+            gap: 16,
           }}
         >
-          {/* Card 1: Browser Engine */}
+          {/* Chromium Executable */}
           <div
             style={{
-              backgroundColor: 'var(--bg-card)',
+              backgroundColor: 'var(--bg-surface)',
               border: '1px solid var(--border)',
-              borderRadius: 8,
-              padding: 20,
+              borderRadius: 'var(--radius-panel)',
+              padding: '16px',
               display: 'flex',
               flexDirection: 'column',
-              gap: 14,
+              gap: 12,
             }}
           >
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#ffffff', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
-              Browser Engine Configuration
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                {t.settings.browserPath}
+              </label>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                {t.settings.browserPathHelp}
+              </div>
             </div>
 
             {settings.browsers && settings.browsers.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)' }}>
-                  Detected Chromium Engines on this PC:
-                </label>
-                <select
-                  value={browserPath}
-                  onChange={(e) => setBrowserPath(e.target.value)}
-                  style={{
-                    backgroundColor: '#0e111b',
-                    border: '1px solid var(--border)',
-                    borderRadius: 5,
-                    padding: '8px 12px',
-                    fontSize: 12.5,
-                    color: 'var(--text-main)',
-                    outline: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <option value="">(Default Auto-Detected: {settings.active_browser_path})</option>
-                  {settings.browsers.map((b, i) => (
-                    <option key={i} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)' }}>
-                Custom Browser Executable Path:
-              </label>
-              <input
-                type="text"
+              <select
+                className="input-field"
                 value={browserPath}
                 onChange={(e) => setBrowserPath(e.target.value)}
-                placeholder="C:\Path\To\chrome.exe"
-                style={{
-                  backgroundColor: '#0e111b',
-                  border: '1px solid var(--border)',
-                  borderRadius: 5,
-                  padding: '8px 12px',
-                  fontSize: 13,
-                  color: 'var(--text-main)',
-                  outline: 'none',
-                }}
-              />
-            </div>
+                style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11.5 }}
+              >
+                <option value="">(Auto-Detect: {settings.active_browser_path})</option>
+                {settings.browsers.map((b, i) => (
+                  <option key={i} value={b} style={{ backgroundColor: 'var(--bg-surface)' }}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <input
+              type="text"
+              className="input-field"
+              value={browserPath}
+              onChange={(e) => setBrowserPath(e.target.value)}
+              placeholder="C:\Program Files\Google\Chrome\Application\chrome.exe"
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }}
+            />
           </div>
 
-          {/* Card 2: Anti-Detect Shield */}
+          {/* Launch URL */}
           <div
             style={{
-              backgroundColor: 'var(--bg-card)',
+              backgroundColor: 'var(--bg-surface)',
               border: '1px solid var(--border)',
-              borderRadius: 8,
-              padding: 20,
+              borderRadius: 'var(--radius-panel)',
+              padding: '16px',
               display: 'flex',
               flexDirection: 'column',
-              gap: 14,
+              gap: 12,
             }}
           >
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#ffffff', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
-              Default Navigation & Anti-Detect Shield
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                {t.settings.startUrl}
+              </label>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                {t.settings.startUrlHelp}
+              </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)' }}>
-                Default Launch URL:
-              </label>
-              <input
-                type="text"
-                value={startUrl}
-                onChange={(e) => setStartUrl(e.target.value)}
-                placeholder="https://browserleaks.com/canvas"
-                style={{
-                  backgroundColor: '#0e111b',
-                  border: '1px solid var(--border)',
-                  borderRadius: 5,
-                  padding: '8px 12px',
-                  fontSize: 13,
-                  color: 'var(--text-main)',
-                  outline: 'none',
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-              <Checkbox
-                checked={maskWebRTC}
-                ariaLabel="Aktifkan Proteksi WebRTC"
-                onChange={setMaskWebRTC}
-              />
-              <label
-                onClick={() => setMaskWebRTC(!maskWebRTC)}
-                style={{ fontSize: 12.5, color: 'var(--text-main)', cursor: 'pointer' }}
-              >
-                Enable WebRTC IP Leak Prevention (Masks local LAN IP candidates)
-              </label>
-            </div>
+            <input
+              type="text"
+              className="input-field"
+              value={startUrl}
+              onChange={(e) => setStartUrl(e.target.value)}
+              placeholder="https://browserleaks.com/canvas"
+            />
           </div>
 
-          <div>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={saving}
-              style={{ padding: '8px 20px', fontSize: 13 }}
-            >
-              {saving ? 'Saving...' : 'Save Settings'}
-            </button>
+          {/* WebRTC Masking */}
+          <div
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-panel)',
+              padding: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                {t.settings.maskWebRTC}
+              </label>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                {t.settings.maskWebRTCHelp}
+              </div>
+            </div>
+
+            <Checkbox
+              checked={maskWebRTC}
+              onChange={setMaskWebRTC}
+              ariaLabel={t.settings.maskWebRTC}
+            />
           </div>
         </form>
-      </section>
+      </div>
     </div>
   );
 }

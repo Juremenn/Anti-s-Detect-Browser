@@ -1,3 +1,4 @@
+import { CheckCircle2, Info, X, XCircle } from 'lucide-react';
 import { ToastMessage } from '../types';
 
 interface ToastProps {
@@ -12,41 +13,53 @@ export function ToastContainer({ toasts, onDismiss }: ToastProps) {
     <div
       style={{
         position: 'fixed',
-        bottom: 24,
-        right: 24,
+        bottom: 20,
+        right: 20,
         display: 'flex',
         flexDirection: 'column',
-        gap: 8,
+        gap: 6,
         zIndex: 2000,
         pointerEvents: 'none',
       }}
     >
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          onClick={() => onDismiss(t.id)}
-          style={{
-            pointerEvents: 'auto',
-            padding: '10px 16px',
-            backgroundColor: '#192036',
-            border: '1px solid #2f54eb',
-            borderRadius: 6,
-            fontSize: 12.5,
-            fontWeight: 500,
-            color: '#ffffff',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            cursor: 'pointer',
-            maxWidth: 380,
-            animation: 'fadeIn 0.15s ease-out',
-          }}
-        >
-          <span style={{ flex: 1 }}>{t.message}</span>
-          <span style={{ color: 'var(--text-dim)', fontSize: 14 }}>&times;</span>
-        </div>
-      ))}
+      {toasts.map((t) => {
+        const isError = t.type === 'error';
+        const isSuccess = t.type === 'success';
+
+        return (
+          <div
+            key={t.id}
+            onClick={() => onDismiss(t.id)}
+            style={{
+              pointerEvents: 'auto',
+              padding: '8px 12px',
+              backgroundColor: 'var(--bg-raised)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-control)',
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+              boxShadow: 'var(--shadow-popover)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              maxWidth: 360,
+              animation: 'fadeIn 120ms ease-out',
+            }}
+          >
+            {isSuccess ? (
+              <CheckCircle2 size={14} strokeWidth={1.5} color="var(--status-running)" />
+            ) : isError ? (
+              <XCircle size={14} strokeWidth={1.5} color="var(--status-error)" />
+            ) : (
+              <Info size={14} strokeWidth={1.5} color="var(--accent)" />
+            )}
+            <span style={{ flex: 1, lineHeight: 1.3 }}>{t.message}</span>
+            <X size={12} strokeWidth={1.5} color="var(--text-tertiary)" style={{ flexShrink: 0 }} />
+          </div>
+        );
+      })}
     </div>
   );
 }

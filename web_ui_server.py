@@ -392,6 +392,10 @@ def launch_in_app_window(port: int):
     if not browser_bin:
         print(f"[!] Tidak ada browser Chromium. Buka {url} secara manual.")
         return
+    env = os.environ.copy()
+    env["GOOGLE_API_KEY"] = "no"
+    env["GOOGLE_DEFAULT_CLIENT_ID"] = "no"
+    env["GOOGLE_DEFAULT_CLIENT_SECRET"] = "no"
     subprocess.Popen([
         browser_bin,
         f"--app={url}",
@@ -401,7 +405,7 @@ def launch_in_app_window(port: int):
         "--disable-features=TranslateUI",
         "--no-first-run",
         "--no-default-browser-check"
-    ])
+    ], env=env)
 
 
 def server_already_running(port: int) -> bool:

@@ -3,6 +3,7 @@ import { api } from './api';
 import { Sidebar } from './components/Sidebar';
 import { ToastContainer } from './components/Toast';
 import { TopBar } from './components/TopBar';
+import { t } from './i18n';
 import { CreateProfileModal } from './modals/CreateProfileModal';
 import {
   AppSettings,
@@ -43,12 +44,12 @@ export default function App() {
     const id = `t_${Date.now()}_${Math.random()}`;
     setToasts((prev) => [...prev, { id, message, type }]);
     setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3500);
+      setToasts((prev) => prev.filter((item) => item.id !== id));
+    }, 3200);
   }, []);
 
   const dismissToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    setToasts((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
   // Fetch initial data
@@ -128,11 +129,24 @@ export default function App() {
     return () => clearInterval(timer);
   }, [activeTab, loadProfiles, loadTrash]);
 
+  // Global Ctrl+N / Cmd+N for New Profile
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        setCreateModalPresetIdx(0);
+        setCreateModalOpen(true);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Actions: Profiles
   async function handleStartProfile(name: string) {
     try {
       await api.startProfile(name);
-      addToast(`Browser untuk profil '${name}' diluncurkan.`, 'success');
+      addToast(t.toast.profileStarted(name), 'success');
       await loadProfiles();
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
@@ -142,7 +156,7 @@ export default function App() {
   async function handleStopProfile(name: string) {
     try {
       await api.stopProfile(name);
-      addToast(`Profil '${name}' dihentikan.`, 'info');
+      addToast(t.toast.profileStopped(name), 'info');
       await loadProfiles();
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
@@ -165,9 +179,27 @@ export default function App() {
         next.delete(name);
         return next;
       });
-      addToast(`Profil '${name}' dipindahkan ke Trash Bin.`, 'info');
+      addToast(t.toast.profileTrashed(name), 'info');
       await loadProfiles();
       await loadTrash();
+    } catch (e: unknown) {
+      addToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  async function handleDuplicateProfile(name: string) {
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const newName = `${name}_Copy_${randomSuffix}`;
+    const sourceProfile = profiles.find((p) => p.name === name);
+    try {
+      await api.createProfile({
+        name: newName,
+        preset: 0,
+        tags: sourceProfile?.tags || ['Copy'],
+        proxy: sourceProfile?.proxy || null,
+      });
+      addToast(t.toast.profileCreated(newName), 'success');
+      await loadProfiles();
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
     }
@@ -177,12 +209,12 @@ export default function App() {
   async function handleBulkStart() {
     if (selectedProfiles.size === 0) return;
     const list = Array.from(selectedProfiles);
-    addToast(`Memulai ${list.length} profil...`, 'info');
+    addToast(t.toast.bulkStarting(list.length), 'info');
     for (const name of list) {
       try {
         await api.startProfile(name);
       } catch (e) {
-        console.error(`Gagal start ${name}:`, e);
+        console.error(`Failed to start ${name}:`, e);
       }
     }
     await loadProfiles();
@@ -191,12 +223,12 @@ export default function App() {
   async function handleBulkStop() {
     if (selectedProfiles.size === 0) return;
     const list = Array.from(selectedProfiles);
-    addToast(`Menghentikan ${list.length} profil...`, 'info');
+    addToast(t.toast.bulkStopping(list.length), 'info');
     for (const name of list) {
       try {
         await api.stopProfile(name);
       } catch (e) {
-        console.error(`Gagal stop ${name}:`, e);
+        console.error(`Failed to stop ${name}:`, e);
       }
     }
     await loadProfiles();
@@ -205,16 +237,16 @@ export default function App() {
   async function handleBulkTrash() {
     if (selectedProfiles.size === 0) return;
     const list = Array.from(selectedProfiles);
-    if (!confirm(`Pindahkan ${list.length} profil terpilih ke Trash Bin?`)) return;
+    if (!confirm(t.bulk.confirmTrashTitle(list.length))) return;
     for (const name of list) {
       try {
         await api.deleteProfile(name);
       } catch (e) {
-        console.error(`Gagal trash ${name}:`, e);
+        console.error(`Failed to trash ${name}:`, e);
       }
     }
     setSelectedProfiles(new Set());
-    addToast(`${list.length} profil dipindahkan ke Trash Bin.`, 'info');
+    addToast(t.toast.bulkTrashed(list.length), 'info');
     await loadProfiles();
     await loadTrash();
   }
@@ -225,22 +257,22 @@ export default function App() {
     const preset = Math.floor(Math.random() * (presets.length || 4));
     try {
       await api.createProfile({ name, preset, tags: ['Quick'] });
-      addToast(`Profil '${name}' berhasil dibuat.`, 'success');
+      addToast(t.toast.profileCreated(name), 'success');
       await loadProfiles();
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
     }
   }
 
-  async function handleTestFingerprint() {
+  async function handleTestFingerprint(specificProfileName?: string) {
     if (profiles.length === 0) {
-      addToast('Buat profil terlebih dahulu sebelum uji fingerprint.', 'error');
+      addToast(t.toast.noProfileForTest, 'error');
       return;
     }
-    const target = profiles[0].name;
+    const target = specificProfileName || profiles[0].name;
     try {
+      addToast(t.toast.testingFingerprint(target), 'info');
       await api.startProfile(target, 'https://browserleaks.com/canvas');
-      addToast(`Membuka BrowserLeaks dengan profil '${target}'.`, 'info');
       await loadProfiles();
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
@@ -249,7 +281,7 @@ export default function App() {
 
   async function handleCreateProfileSubmit(payload: CreateProfilePayload) {
     await api.createProfile(payload);
-    addToast(`Profil '${payload.name}' berhasil dibuat.`, 'success');
+    addToast(t.toast.profileCreated(payload.name), 'success');
     await loadProfiles();
     setActiveTab('profiles');
   }
@@ -258,7 +290,7 @@ export default function App() {
   async function handleRestoreTrash(trashId: string) {
     try {
       const res = await api.restoreTrash(trashId);
-      addToast(`Profil '${res.name}' berhasil dikembalikan.`, 'success');
+      addToast(t.toast.profileRestored(res.name), 'success');
       await loadTrash();
       await loadProfiles();
     } catch (e: unknown) {
@@ -269,7 +301,7 @@ export default function App() {
   async function handlePurgeTrash(trashId: string) {
     try {
       await api.purgeTrash(trashId);
-      addToast('Item berhasil dihapus permanen.', 'info');
+      addToast('Profile permanently deleted.', 'info');
       await loadTrash();
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
@@ -279,7 +311,7 @@ export default function App() {
   async function handlePurgeAllTrash() {
     try {
       await api.purgeTrash();
-      addToast('Trash Bin telah dikosongkan.', 'info');
+      addToast(t.toast.trashCleared, 'info');
       await loadTrash();
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
@@ -289,14 +321,14 @@ export default function App() {
   // Proxy Actions
   async function handleAddProxy(title: string, url: string) {
     await api.addProxy(title, url);
-    addToast(`Proxy '${title || url}' berhasil ditambahkan.`, 'success');
+    addToast(t.toast.proxyAdded(title || url), 'success');
     await loadProxies();
   }
 
   async function handleDeleteProxy(id: string) {
     try {
       await api.deleteProxy(id);
-      addToast('Proxy berhasil dihapus.', 'info');
+      addToast(t.toast.proxyDeleted, 'info');
       await loadProxies();
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
@@ -307,7 +339,7 @@ export default function App() {
   async function handleSaveSettings(newSettings: Partial<AppSettings>) {
     try {
       await api.saveSettings(newSettings);
-      addToast('Pengaturan berhasil disimpan.', 'success');
+      addToast(t.toast.settingsSaved, 'success');
       await loadSettings();
       await loadProfiles();
     } catch (e: unknown) {
@@ -338,11 +370,17 @@ export default function App() {
                 setCreateModalOpen(true);
               }}
               onQuickProfile={handleQuickProfile}
-              onTestFingerprint={handleTestFingerprint}
+              onTestFingerprint={() => handleTestFingerprint()}
               search={searchQuery}
               onSearchChange={setSearchQuery}
               statusFilter={statusFilter}
               onStatusFilterChange={setStatusFilter}
+              totalProfilesCount={profiles.length}
+              selectedCount={selectedProfiles.size}
+              onBulkStart={handleBulkStart}
+              onBulkStop={handleBulkStop}
+              onBulkTrash={handleBulkTrash}
+              onDeselectAll={() => setSelectedProfiles(new Set())}
             />
             <ProfilesView
               profiles={profiles}
@@ -367,14 +405,12 @@ export default function App() {
               onStopProfile={handleStopProfile}
               onOpenFolder={handleOpenFolder}
               onTrashProfile={handleTrashProfile}
-              onBulkStart={handleBulkStart}
-              onBulkStop={handleBulkStop}
-              onBulkTrash={handleBulkTrash}
+              onDuplicateProfile={handleDuplicateProfile}
+              onTestProfile={(name) => handleTestFingerprint(name)}
               onOpenNewProfileModal={() => {
                 setCreateModalPresetIdx(0);
                 setCreateModalOpen(true);
               }}
-              onQuickProfile={handleQuickProfile}
               searchQuery={searchQuery}
               statusFilter={statusFilter}
             />

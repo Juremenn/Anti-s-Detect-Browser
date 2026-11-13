@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import { Globe, Plus, Trash2 } from 'lucide-react';
 import { EmptyState } from '../components/EmptyState';
+import { t } from '../i18n';
 import { AddProxyModal } from '../modals/AddProxyModal';
 import { ProxyItem } from '../types';
+import { formatProxy } from '../utils/formatters';
 
 interface ProxiesViewProps {
   proxies: ProxyItem[];
@@ -18,114 +21,152 @@ export function ProxiesView({
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Header */}
       <header
         style={{
-          height: 60,
+          height: 48,
           borderBottom: '1px solid var(--border)',
+          backgroundColor: 'var(--bg-surface)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 24px',
+          padding: '0 16px',
           flexShrink: 0,
         }}
       >
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: '#ffffff' }}>Proxy Manager</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h2 style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: -0.2 }}>
+            {t.proxies.title}
+          </h2>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              color: 'var(--text-tertiary)',
+              backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              padding: '1px 6px',
+              borderRadius: 4,
+              fontFamily: 'var(--font-mono)',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {proxies.length}
+          </span>
+        </div>
         <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-          </svg>
-          Add Proxy
+          <Plus size={14} strokeWidth={2} />
+          <span>{t.proxies.addProxy}</span>
         </button>
       </header>
 
-      <section style={{ padding: '20px 24px', flex: 1, overflowY: 'auto' }}>
-        <div
+      {/* Table */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <table
           style={{
-            backgroundColor: 'var(--bg-card)',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            overflow: 'hidden',
+            width: '100%',
+            borderCollapse: 'collapse',
+            textAlign: 'left',
+            fontSize: 12.5,
           }}
         >
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12.5 }}>
-            <thead>
+          <thead>
+            <tr
+              style={{
+                height: 36,
+                backgroundColor: 'var(--bg-surface)',
+                borderBottom: '1px solid var(--border)',
+                color: 'var(--text-tertiary)',
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: 0.3,
+                userSelect: 'none',
+              }}
+            >
+              <th style={{ minWidth: 180, padding: '0 16px' }}>{t.proxies.colTitle}</th>
+              <th style={{ minWidth: 260, padding: '0 12px' }}>{t.proxies.colUrl}</th>
+              <th style={{ width: 140, padding: '0 12px' }}>{t.proxies.colType}</th>
+              <th style={{ width: 100, textAlign: 'right', padding: '0 16px' }}>
+                {t.proxies.colActions}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {proxies.length === 0 ? (
               <tr>
-                <th style={{ width: 220, backgroundColor: '#121522', color: 'var(--text-dim)', fontWeight: 600, padding: '10px 14px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
-                  Label
-                </th>
-                <th style={{ backgroundColor: '#121522', color: 'var(--text-dim)', fontWeight: 600, padding: '10px 14px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
-                  Proxy Address
-                </th>
-                <th style={{ width: 160, backgroundColor: '#121522', color: 'var(--text-dim)', fontWeight: 600, padding: '10px 14px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
-                  Date Added
-                </th>
-                <th style={{ width: 100, textAlign: 'right', backgroundColor: '#121522', color: 'var(--text-dim)', fontWeight: 600, padding: '10px 14px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
-                  Action
-                </th>
+                <td colSpan={4} style={{ padding: 0 }}>
+                  <EmptyState
+                    title={t.empty.proxiesEmptyTitle}
+                    description={t.empty.proxiesEmptyDesc}
+                    actions={
+                      <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
+                        <Plus size={14} strokeWidth={2} />
+                        <span>{t.proxies.addProxy}</span>
+                      </button>
+                    }
+                  />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {proxies.length === 0 ? (
-                <tr>
-                  <td colSpan={4} style={{ padding: 0 }}>
-                    <EmptyState
-                      title="Belum Ada Proxy Tersimpan"
-                      description="Tambahkan konfigurasi proxy HTTP atau SOCKS5 untuk digunakan pada profil browser Anda."
-                      actions={
-                        <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-                          </svg>
-                          Add Proxy
-                        </button>
-                      }
-                    />
-                  </td>
-                </tr>
-              ) : (
-                proxies.map((p) => {
-                  const dateStr = p.added_at
-                    ? new Date(p.added_at * 1000).toLocaleDateString('id-ID')
-                    : '-';
+            ) : (
+              proxies.map((p) => {
+                const proxyInfo = formatProxy(p.url);
 
-                  return (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '12px 14px' }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, color: '#ffffff' }}>
-                          {p.title}
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <div style={{ fontFamily: 'monospace', color: '#38bdf8', fontSize: 12 }}>
-                          {p.url}
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 14px', color: 'var(--text-dim)', fontSize: 11.5 }}>
-                        {dateStr}
-                      </td>
-                      <td style={{ textAlign: 'right', padding: '12px 14px' }}>
-                        <button
-                          className="btn-icon danger"
-                          title="Hapus Proxy"
-                          onClick={() => {
-                            if (confirm(`Hapus proxy '${p.title}'?`)) {
-                              onDeleteProxy(p.id);
-                            }
-                          }}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-                          </svg>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                return (
+                  <tr
+                    key={p.id}
+                    style={{
+                      height: 44,
+                      borderBottom: '1px solid var(--border)',
+                      transition: 'background-color 120ms ease-out',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--bg-hover-row)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <td style={{ padding: '0 16px', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--text-primary)' }}>
+                        {p.title || proxyInfo.hostPort}
+                      </div>
+                    </td>
+                    <td style={{ padding: '0 12px', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Globe size={13} strokeWidth={1.5} color="var(--text-secondary)" />
+                        <span className="mono-tech">{proxyInfo.hostPort}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '0 12px', whiteSpace: 'nowrap' }}>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--text-tertiary)',
+                          fontFamily: 'var(--font-mono)',
+                        }}
+                      >
+                        {proxyInfo.protocol}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '0 16px', whiteSpace: 'nowrap' }}>
+                      <button
+                        className="btn-icon danger"
+                        title={t.proxies.delete}
+                        onClick={() => {
+                          if (confirm(`Delete proxy '${p.title || p.url}'?`)) {
+                            onDeleteProxy(p.id);
+                          }
+                        }}
+                      >
+                        <Trash2 size={13} strokeWidth={1.5} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
 
       <AddProxyModal
         isOpen={modalOpen}
