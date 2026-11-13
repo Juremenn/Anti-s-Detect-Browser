@@ -1,21 +1,35 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowDown,
+  ArrowUp,
   Copy,
+  Download,
+  Edit2,
   FlaskConical,
   Folder,
   Globe,
   Monitor,
   MoreHorizontal,
   Play,
+  RefreshCw,
   Square,
   Trash2,
 } from 'lucide-react';
 import { Checkbox } from '../components/Checkbox';
 import { EmptyState } from '../components/EmptyState';
-import { StatusPill } from '../components/StatusPill';
+import { Button } from '../components/ui/Button';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { ContextMenu } from '../components/ui/ContextMenu';
+import { DropdownMenu, MenuItem } from '../components/ui/DropdownMenu';
+import { IconButton } from '../components/ui/IconButton';
+import { StatusDot } from '../components/ui/StatusDot';
 import { t } from '../i18n';
-import { Profile } from '../types';
-import { formatFingerprintSpec, formatProxy } from '../utils/formatters';
+import { Profile, SortDirection, SortField } from '../types';
+import {
+  formatFingerprintSpec,
+  formatProxy,
+  formatRelativeTime,
+} from '../utils/formatters';
 
 interface ProfilesViewProps {
   profiles: Profile[];
@@ -25,13 +39,17 @@ interface ProfilesViewProps {
   onDeselectAll: () => void;
   onStartProfile: (name: string) => Promise<void> | void;
   onStopProfile: (name: string) => Promise<void> | void;
+  onEditProfile?: (name: string) => void;
   onOpenFolder: (name: string) => void;
   onTrashProfile: (name: string) => void;
   onDuplicateProfile?: (name: string) => void;
   onTestProfile?: (name: string) => void;
+  onRegenerateIdentity?: (name: string) => void;
+  onExportProfile?: (name: string) => void;
   onOpenNewProfileModal: () => void;
   searchQuery: string;
   statusFilter: string;
+  tagFilter?: string;
 }
 
 export function ProfilesView({
@@ -41,24 +59,57 @@ export function ProfilesView({
   onToggleSelectAll,
   onStartProfile,
   onStopProfile,
+  onEditProfile,
   onOpenFolder,
   onTrashProfile,
   onDuplicateProfile,
   onTestProfile,
+  onRegenerateIdentity,
+  onExportProfile,
   onOpenNewProfileModal,
   searchQuery,
   statusFilter,
+  tagFilter = 'all',
 }: ProfilesViewProps) {
-  const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [startingProfiles, setStartingProfiles] = useState<Set<string>>(new Set());
-  const menuRef = useRef<HTMLDivElement>(null);
-  const tableRef = useRef<HTMLTableElement>(null);
+  const [contextMenuState, setContextMenuState] = useState<{
+    x: number;
+    y: number;
+    profile: Profile;
+  } | null>(null);
 
-  // Filter profiles based on search and status
-  const filteredProfiles = useMemo(() => {
+  // Confirm Dialog state
+  const [confirmDeleteProfile, setConfirmDeleteProfile] = useState<string | null>(null);
+  const [confirmRegenerateProfile, setConfirmRegenerateProfile] = useState<string | null>(null);
+
+  // Saved sorting in localStorage
+  const [sortField, setSortField] = useState<SortField>(() => {
+    return (localStorage.getItem('octo_sort_field') as SortField) || 'name';
+  });
+  const [sortDir, setSortDir] = useState<SortDirection>(() => {
+    return (localStorage.getItem('octo_sort_dir') as SortDirection) || 'asc';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('octo_sort_field', sortField);
+    localStorage.setItem('octo_sort_dir', sortDir);
+  }, [sortField, sortDir]);
+
+  function handleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  }
+
+  // Filter & Sort
+  const processedProfiles = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    return profiles.filter((p) => {
+
+    const filtered = profiles.filter((p) => {
       const matchQuery =
         !q ||
         p.name.toLowerCase().includes(q) ||
@@ -73,72 +124,36 @@ export function ProfilesView({
           ? p.is_active
           : !p.is_active;
 
-      return matchQuery && matchStatus;
+      const matchTag =
+        tagFilter === 'all' || !tagFilter
+          ? true
+          : (p.tags || []).includes(tagFilter);
+
+      return matchQuery && matchStatus && matchTag;
     });
-  }, [profiles, searchQuery, statusFilter]);
+
+    return filtered.sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'name') {
+        cmp = a.name.localeCompare(b.name);
+      } else if (sortField === 'status') {
+        cmp = (a.is_active ? 1 : 0) - (b.is_active ? 1 : 0);
+      } else if (sortField === 'last_used') {
+        const tA = Number(a.last_used_at || 0);
+        const tB = Number(b.last_used_at || 0);
+        cmp = tA - tB;
+      } else if (sortField === 'proxy') {
+        cmp = (a.proxy || '').localeCompare(b.proxy || '');
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [profiles, searchQuery, statusFilter, tagFilter, sortField, sortDir]);
 
   const allSelected =
-    filteredProfiles.length > 0 &&
-    filteredProfiles.every((p) => selectedProfiles.has(p.name));
+    processedProfiles.length > 0 &&
+    processedProfiles.every((p) => selectedProfiles.has(p.name));
   const someSelected =
-    filteredProfiles.some((p) => selectedProfiles.has(p.name)) && !allSelected;
-
-  // Close overflow menu on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setActiveMenu(null);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Keyboard navigation: Arrow Up/Down, Enter, Delete, Space
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      // Don't trigger if typing in an input
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
-        return;
-      }
-
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setFocusedIndex((prev) => (prev < filteredProfiles.length - 1 ? prev + 1 : 0));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setFocusedIndex((prev) => (prev > 0 ? prev - 1 : filteredProfiles.length - 1));
-      } else if (e.key === 'Enter') {
-        if (focusedIndex >= 0 && focusedIndex < filteredProfiles.length) {
-          e.preventDefault();
-          const targetProfile = filteredProfiles[focusedIndex];
-          if (targetProfile.is_active) {
-            onStopProfile(targetProfile.name);
-          } else {
-            handleStartWithProgress(targetProfile.name);
-          }
-        }
-      } else if (e.key === 'Delete') {
-        if (focusedIndex >= 0 && focusedIndex < filteredProfiles.length) {
-          e.preventDefault();
-          const targetProfile = filteredProfiles[focusedIndex];
-          if (confirm(t.actions.confirmDelete(targetProfile.name))) {
-            onTrashProfile(targetProfile.name);
-          }
-        }
-      } else if (e.key === ' ') {
-        if (focusedIndex >= 0 && focusedIndex < filteredProfiles.length) {
-          e.preventDefault();
-          const targetProfile = filteredProfiles[focusedIndex];
-          onToggleSelect(targetProfile.name, !selectedProfiles.has(targetProfile.name));
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [focusedIndex, filteredProfiles, selectedProfiles, onToggleSelect, onStopProfile, onTrashProfile]);
+    processedProfiles.some((p) => selectedProfiles.has(p.name)) && !allSelected;
 
   async function handleStartWithProgress(name: string) {
     setStartingProfiles((prev) => new Set(prev).add(name));
@@ -153,6 +168,103 @@ export function ProfilesView({
     }
   }
 
+  // Keyboard navigation
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT'
+      ) {
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFocusedIndex((prev) => (prev < processedProfiles.length - 1 ? prev + 1 : 0));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFocusedIndex((prev) => (prev > 0 ? prev - 1 : processedProfiles.length - 1));
+      } else if (e.key === 'Enter') {
+        if (focusedIndex >= 0 && focusedIndex < processedProfiles.length) {
+          e.preventDefault();
+          const p = processedProfiles[focusedIndex];
+          if (e.shiftKey) {
+            onStopProfile(p.name);
+          } else {
+            if (p.is_active) onStopProfile(p.name);
+            else handleStartWithProgress(p.name);
+          }
+        }
+      } else if (e.key.toLowerCase() === 'e' && !e.ctrlKey && !e.metaKey) {
+        if (focusedIndex >= 0 && focusedIndex < processedProfiles.length && onEditProfile) {
+          e.preventDefault();
+          onEditProfile(processedProfiles[focusedIndex].name);
+        }
+      } else if (e.key === 'Delete') {
+        if (focusedIndex >= 0 && focusedIndex < processedProfiles.length) {
+          e.preventDefault();
+          setConfirmDeleteProfile(processedProfiles[focusedIndex].name);
+        }
+      } else if (e.key === ' ') {
+        if (focusedIndex >= 0 && focusedIndex < processedProfiles.length) {
+          e.preventDefault();
+          const p = processedProfiles[focusedIndex];
+          onToggleSelect(p.name, !selectedProfiles.has(p.name));
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [focusedIndex, processedProfiles, selectedProfiles, onToggleSelect, onStopProfile, onEditProfile]);
+
+  function getRowMenuItems(p: Profile): MenuItem[] {
+    return [
+      {
+        label: t.actions.edit,
+        icon: <Edit2 size={13} strokeWidth={1.5} />,
+        onClick: () => onEditProfile?.(p.name),
+      },
+      {
+        label: t.actions.duplicate,
+        icon: <Copy size={13} strokeWidth={1.5} />,
+        onClick: () => onDuplicateProfile?.(p.name),
+      },
+      {
+        label: t.actions.openFolder,
+        icon: <Folder size={13} strokeWidth={1.5} />,
+        onClick: () => onOpenFolder(p.name),
+      },
+      {
+        label: t.actions.testFingerprint,
+        icon: <FlaskConical size={13} strokeWidth={1.5} />,
+        onClick: () => {
+          if (onTestProfile) onTestProfile(p.name);
+          else handleStartWithProgress(p.name);
+        },
+      },
+      {
+        label: t.actions.regenerateIdentity,
+        icon: <RefreshCw size={13} strokeWidth={1.5} />,
+        onClick: () => setConfirmRegenerateProfile(p.name),
+      },
+      {
+        label: t.actions.export,
+        icon: <Download size={13} strokeWidth={1.5} />,
+        onClick: () => onExportProfile?.(p.name),
+      },
+      { separator: true, label: '' },
+      {
+        label: t.actions.moveToTrash,
+        danger: true,
+        icon: <Trash2 size={13} strokeWidth={1.5} />,
+        onClick: () => setConfirmDeleteProfile(p.name),
+      },
+    ];
+  }
+
   return (
     <section
       style={{
@@ -165,12 +277,11 @@ export function ProfilesView({
     >
       <div style={{ flex: 1, overflow: 'auto' }}>
         <table
-          ref={tableRef}
           style={{
             width: '100%',
             borderCollapse: 'collapse',
             textAlign: 'left',
-            fontSize: 12.5,
+            fontSize: 'var(--text-body)',
           }}
         >
           <thead>
@@ -180,7 +291,7 @@ export function ProfilesView({
                 backgroundColor: 'var(--bg-surface)',
                 borderBottom: '1px solid var(--border)',
                 color: 'var(--text-tertiary)',
-                fontSize: 11,
+                fontSize: 'var(--text-caption)',
                 fontWeight: 600,
                 letterSpacing: 0.3,
                 userSelect: 'none',
@@ -190,25 +301,62 @@ export function ProfilesView({
                 <Checkbox
                   checked={allSelected}
                   indeterminate={someSelected}
-                  disabled={filteredProfiles.length === 0}
+                  disabled={processedProfiles.length === 0}
                   ariaLabel={t.table.selectAll}
                   onChange={onToggleSelectAll}
                 />
               </th>
-              <th style={{ minWidth: 180, padding: '0 12px' }}>{t.table.name}</th>
-              <th style={{ width: 110, padding: '0 12px' }}>{t.table.status}</th>
+              <th
+                onClick={() => handleSort('name')}
+                style={{ minWidth: 180, padding: '0 12px', cursor: 'pointer' }}
+              >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span>{t.table.name}</span>
+                  {sortField === 'name' &&
+                    (sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('status')}
+                style={{ width: 110, padding: '0 12px', cursor: 'pointer' }}
+              >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span>{t.table.status}</span>
+                  {sortField === 'status' &&
+                    (sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
+                </div>
+              </th>
               <th style={{ minWidth: 260, padding: '0 12px' }}>{t.table.fingerprint}</th>
-              <th style={{ width: 160, padding: '0 12px' }}>{t.table.proxy}</th>
+              <th
+                onClick={() => handleSort('proxy')}
+                style={{ width: 160, padding: '0 12px', cursor: 'pointer' }}
+              >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span>{t.table.proxy}</span>
+                  {sortField === 'proxy' &&
+                    (sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
+                </div>
+              </th>
               <th style={{ width: 140, padding: '0 12px' }}>{t.table.tags}</th>
+              <th
+                onClick={() => handleSort('last_used')}
+                style={{ width: 110, padding: '0 12px', cursor: 'pointer' }}
+              >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span>{t.table.lastUsed}</span>
+                  {sortField === 'last_used' &&
+                    (sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
+                </div>
+              </th>
               <th style={{ width: 100, textAlign: 'right', padding: '0 16px' }}>
                 {t.table.actions}
               </th>
             </tr>
           </thead>
           <tbody>
-            {filteredProfiles.length === 0 ? (
+            {processedProfiles.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ padding: 0 }}>
+                <td colSpan={8} style={{ padding: 0 }}>
                   <EmptyState
                     title={
                       profiles.length === 0
@@ -222,28 +370,23 @@ export function ProfilesView({
                     }
                     actions={
                       profiles.length === 0 ? (
-                        <button
-                          className="btn btn-primary"
-                          onClick={onOpenNewProfileModal}
-                        >
-                          {t.empty.createFirstProfile}
-                        </button>
+                        <Button variant="primary" size="md" onClick={onOpenNewProfileModal}>
+                          {t.empty.createProfile}
+                        </Button>
                       ) : undefined
                     }
                   />
                 </td>
               </tr>
             ) : (
-              filteredProfiles.map((p, idx) => {
+              processedProfiles.map((p, idx) => {
                 const isSelected = selectedProfiles.has(p.name);
                 const isFocused = idx === focusedIndex;
-                const isStarting = startingProfiles.has(p.name);
-                const isMac = (p.platform || '').toLowerCase().includes('mac');
-                const isMenuOpen = activeMenu === p.name;
+                const isLaunching = startingProfiles.has(p.name);
                 const specSummary = formatFingerprintSpec(p);
                 const proxyInfo = formatProxy(p.proxy);
+                const relativeTime = formatRelativeTime(p.last_used_at);
 
-                // Filter out "Default" tag when it's the only one
                 const visibleTags = (p.tags || []).filter(
                   (tag) => tag.toLowerCase() !== 'default'
                 );
@@ -253,30 +396,38 @@ export function ProfilesView({
                     key={p.name}
                     tabIndex={0}
                     onFocus={() => setFocusedIndex(idx)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenuState({ x: e.clientX, y: e.clientY, profile: p });
+                    }}
                     style={{
-                      height: 44,
+                      height: 'var(--row-height)',
                       borderBottom: '1px solid var(--border)',
                       backgroundColor: isSelected
                         ? 'var(--accent-subtle)'
                         : isFocused
-                        ? 'var(--bg-hover-row)'
+                        ? 'var(--bg-row-hover)'
                         : 'transparent',
                       transition: 'background-color 120ms ease-out',
                       outline: 'none',
                     }}
                     onMouseEnter={(e) => {
                       if (!isSelected && !isFocused) {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-hover-row)';
+                        e.currentTarget.style.backgroundColor = 'var(--bg-row-hover)';
                       }
-                      const actionGroup = e.currentTarget.querySelector('.row-actions') as HTMLElement;
+                      const actionGroup = e.currentTarget.querySelector(
+                        '.row-actions'
+                      ) as HTMLElement;
                       if (actionGroup) actionGroup.style.opacity = '1';
                     }}
                     onMouseLeave={(e) => {
                       if (!isSelected && !isFocused) {
                         e.currentTarget.style.backgroundColor = 'transparent';
                       }
-                      const actionGroup = e.currentTarget.querySelector('.row-actions') as HTMLElement;
-                      if (actionGroup && !isMenuOpen) actionGroup.style.opacity = '0.6';
+                      const actionGroup = e.currentTarget.querySelector(
+                        '.row-actions'
+                      ) as HTMLElement;
+                      if (actionGroup) actionGroup.style.opacity = '0.6';
                     }}
                   >
                     {/* Checkbox */}
@@ -288,12 +439,12 @@ export function ProfilesView({
                       />
                     </td>
 
-                    {/* Name + Monospace Seed */}
+                    {/* Name + Seed */}
                     <td style={{ padding: '0 12px', whiteSpace: 'nowrap' }}>
                       <div
                         style={{
                           fontWeight: 500,
-                          fontSize: 13,
+                          fontSize: 'var(--text-body)',
                           color: 'var(--text-primary)',
                           lineHeight: 1.2,
                         }}
@@ -302,7 +453,7 @@ export function ProfilesView({
                       </div>
                       <div
                         style={{
-                          fontSize: 11,
+                          fontSize: 'var(--text-caption)',
                           fontFamily: 'var(--font-mono)',
                           color: 'var(--text-tertiary)',
                           lineHeight: 1.2,
@@ -313,16 +464,22 @@ export function ProfilesView({
                       </div>
                     </td>
 
-                    {/* Status Dot + Label (Inline progress on starting) */}
+                    {/* Status Dot + Text (inline progress on launching) */}
                     <td style={{ padding: '0 12px', whiteSpace: 'nowrap' }}>
-                      <StatusPill
-                        isActive={p.is_active}
-                        isStarting={isStarting}
-                        pid={p.pid}
-                      />
+                      {isLaunching ? (
+                        <StatusDot status="launching" label={t.status.launching} />
+                      ) : p.is_active ? (
+                        <StatusDot
+                          status="running"
+                          label={t.status.running}
+                          subLabel={p.pid ? `(${p.pid})` : undefined}
+                        />
+                      ) : (
+                        <StatusDot status="idle" label={t.status.idle} />
+                      )}
                     </td>
 
-                    {/* Fingerprint: OS Icon + Parsed Short Single-Line Spec + Full Tooltip */}
+                    {/* Fingerprint Spec Single Line with Tooltip */}
                     <td
                       style={{
                         padding: '0 12px',
@@ -330,19 +487,14 @@ export function ProfilesView({
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                       }}
-                      title={p.webgl_renderer || 'WebGL Hardware Profile'}
+                      title={p.webgl_renderer || 'Standard Profile'}
                     >
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        {isMac ? (
-                          <Monitor size={14} strokeWidth={1.5} color="var(--text-secondary)" />
-                        ) : (
-                          <Monitor size={14} strokeWidth={1.5} color="var(--text-secondary)" />
-                        )}
+                        <Monitor size={14} strokeWidth={1.5} color="var(--text-secondary)" />
                         <span
                           style={{
-                            fontSize: 12,
+                            fontSize: 'var(--text-label)',
                             color: 'var(--text-secondary)',
-                            fontFamily: 'var(--font-sans)',
                           }}
                         >
                           {specSummary}
@@ -350,10 +502,10 @@ export function ProfilesView({
                       </div>
                     </td>
 
-                    {/* Proxy: Direct in tertiary text; Real proxy in mono host:port */}
+                    {/* Proxy */}
                     <td style={{ padding: '0 12px', whiteSpace: 'nowrap' }}>
                       {proxyInfo.isDirect ? (
-                        <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                        <span style={{ fontSize: 'var(--text-label)', color: 'var(--text-tertiary)' }}>
                           {t.table.directProxy}
                         </span>
                       ) : (
@@ -361,7 +513,7 @@ export function ProfilesView({
                           <Globe size={13} strokeWidth={1.5} color="var(--text-secondary)" />
                           <span
                             className="mono-tech"
-                            style={{ fontSize: 11.5 }}
+                            style={{ fontSize: 'var(--text-label)' }}
                             title={p.proxy || ''}
                           >
                             {proxyInfo.hostPort}
@@ -370,7 +522,7 @@ export function ProfilesView({
                       )}
                     </td>
 
-                    {/* Tags: Hidden when only "Default", subtle 1px border chips otherwise */}
+                    {/* Tags */}
                     <td style={{ padding: '0 12px', whiteSpace: 'nowrap' }}>
                       {visibleTags.length > 0 ? (
                         <div style={{ display: 'inline-flex', gap: 4, flexWrap: 'nowrap' }}>
@@ -378,7 +530,7 @@ export function ProfilesView({
                             <span
                               key={tag}
                               style={{
-                                fontSize: 11,
+                                fontSize: 'var(--text-caption)',
                                 color: 'var(--text-secondary)',
                                 border: '1px solid var(--border)',
                                 borderRadius: 4,
@@ -404,7 +556,20 @@ export function ProfilesView({
                       ) : null}
                     </td>
 
-                    {/* Row Actions: 28px ghost Start/Stop button + Overflow Menu */}
+                    {/* Last Used (Relative) */}
+                    <td style={{ padding: '0 12px', whiteSpace: 'nowrap' }}>
+                      <span
+                        style={{
+                          fontSize: 'var(--text-label)',
+                          color: 'var(--text-tertiary)',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {relativeTime}
+                      </span>
+                    </td>
+
+                    {/* Actions: Compact 28px ghost Start/Stop + ⋯ menu */}
                     <td style={{ textAlign: 'right', padding: '0 16px', whiteSpace: 'nowrap' }}>
                       <div
                         className="row-actions"
@@ -412,127 +577,43 @@ export function ProfilesView({
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 4,
-                          opacity: isMenuOpen ? 1 : 0.6,
+                          opacity: 0.6,
                           transition: 'opacity 140ms ease-out',
                         }}
                       >
                         {p.is_active ? (
-                          <button
-                            className="btn btn-ghost"
-                            style={{
-                              height: 28,
-                              padding: '0 8px',
-                              fontSize: 12,
-                              color: 'var(--status-error)',
-                            }}
-                            title={t.actions.stop}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            style={{ color: 'var(--status-danger)' }}
                             onClick={() => onStopProfile(p.name)}
+                            title={t.actions.stop}
                           >
-                            <Square size={11} strokeWidth={2} color="var(--status-error)" />
+                            <Square size={11} strokeWidth={2} color="var(--status-danger)" />
                             <span>{t.actions.stop}</span>
-                          </button>
+                          </Button>
                         ) : (
-                          <button
-                            className="btn btn-ghost"
-                            style={{
-                              height: 28,
-                              padding: '0 8px',
-                              fontSize: 12,
-                            }}
-                            title={t.actions.start}
-                            disabled={isStarting}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={isLaunching}
                             onClick={() => handleStartWithProgress(p.name)}
+                            title={t.actions.start}
                           >
-                            <Play size={11} strokeWidth={2} color="var(--status-running)" />
+                            <Play size={11} strokeWidth={2} color="var(--status-success)" />
                             <span>{t.actions.start}</span>
-                          </button>
+                          </Button>
                         )}
 
-                        {/* Overflow ⋯ Menu */}
-                        <div style={{ position: 'relative', display: 'inline-block' }}>
-                          <button
-                            className="btn-icon"
-                            title={t.actions.more}
-                            onClick={() => setActiveMenu(isMenuOpen ? null : p.name)}
-                            style={{ width: 28, height: 28 }}
-                          >
-                            <MoreHorizontal size={15} strokeWidth={1.5} />
-                          </button>
-
-                          {isMenuOpen && (
-                            <div
-                              ref={menuRef}
-                              className="popover-menu"
-                              style={{
-                                position: 'absolute',
-                                right: 0,
-                                top: 'calc(100% + 4px)',
-                                width: 160,
-                                zIndex: 100,
-                              }}
-                            >
-                              <button
-                                className="menu-item"
-                                onClick={() => {
-                                  setActiveMenu(null);
-                                  onOpenFolder(p.name);
-                                }}
-                              >
-                                <Folder size={13} strokeWidth={1.5} />
-                                <span>{t.actions.openFolder}</span>
-                              </button>
-
-                              {onDuplicateProfile && (
-                                <button
-                                  className="menu-item"
-                                  onClick={() => {
-                                    setActiveMenu(null);
-                                    onDuplicateProfile(p.name);
-                                  }}
-                                >
-                                  <Copy size={13} strokeWidth={1.5} />
-                                  <span>{t.actions.duplicate}</span>
-                                </button>
-                              )}
-
-                              <button
-                                className="menu-item"
-                                onClick={() => {
-                                  setActiveMenu(null);
-                                  if (onTestProfile) {
-                                    onTestProfile(p.name);
-                                  } else {
-                                    handleStartWithProgress(p.name);
-                                  }
-                                }}
-                              >
-                                <FlaskConical size={13} strokeWidth={1.5} />
-                                <span>{t.actions.testFingerprint}</span>
-                              </button>
-
-                              <div
-                                style={{
-                                  height: 1,
-                                  backgroundColor: 'var(--border)',
-                                  margin: '4px 0',
-                                }}
-                              />
-
-                              <button
-                                className="menu-item danger"
-                                onClick={() => {
-                                  setActiveMenu(null);
-                                  if (confirm(t.actions.confirmDelete(p.name))) {
-                                    onTrashProfile(p.name);
-                                  }
-                                }}
-                              >
-                                <Trash2 size={13} strokeWidth={1.5} />
-                                <span>{t.actions.delete}</span>
-                              </button>
-                            </div>
+                        <DropdownMenu
+                          align="right"
+                          items={getRowMenuItems(p)}
+                          trigger={({ toggle }) => (
+                            <IconButton size="sm" onClick={toggle} tooltip={t.actions.more}>
+                              <MoreHorizontal size={14} strokeWidth={1.5} />
+                            </IconButton>
                           )}
-                        </div>
+                        />
                       </div>
                     </td>
                   </tr>
@@ -543,7 +624,7 @@ export function ProfilesView({
         </table>
       </div>
 
-      {/* Table Footer Summary */}
+      {/* Table Footer */}
       <div
         style={{
           height: 32,
@@ -553,18 +634,62 @@ export function ProfilesView({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          fontSize: 11,
+          fontSize: 'var(--text-caption)',
           color: 'var(--text-tertiary)',
           flexShrink: 0,
         }}
       >
         <span>
-          {filteredProfiles.length} of {profiles.length} profiles displayed
+          {processedProfiles.length} of {profiles.length} profiles displayed
         </span>
-        <span>
+        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
           {profiles.filter((p) => p.is_active).length} active
         </span>
       </div>
+
+      {/* Right-click Context Menu */}
+      {contextMenuState && (
+        <ContextMenu
+          x={contextMenuState.x}
+          y={contextMenuState.y}
+          items={getRowMenuItems(contextMenuState.profile)}
+          onClose={() => setContextMenuState(null)}
+        />
+      )}
+
+      {/* Confirm Delete Dialog */}
+      {confirmDeleteProfile && (
+        <ConfirmDialog
+          isOpen={true}
+          danger={true}
+          title={t.actions.moveToTrash}
+          description={t.actions.confirmDelete(confirmDeleteProfile)}
+          confirmLabel={t.modal.delete}
+          cancelLabel={t.modal.cancel}
+          onClose={() => setConfirmDeleteProfile(null)}
+          onConfirm={() => {
+            onTrashProfile(confirmDeleteProfile);
+            setConfirmDeleteProfile(null);
+          }}
+        />
+      )}
+
+      {/* Confirm Regenerate Identity Dialog */}
+      {confirmRegenerateProfile && (
+        <ConfirmDialog
+          isOpen={true}
+          danger={true}
+          title={t.actions.confirmRegenerateTitle}
+          description={t.actions.confirmRegenerateDesc}
+          confirmLabel={t.actions.regenerateIdentity}
+          cancelLabel={t.modal.cancel}
+          onClose={() => setConfirmRegenerateProfile(null)}
+          onConfirm={() => {
+            onRegenerateIdentity?.(confirmRegenerateProfile);
+            setConfirmRegenerateProfile(null);
+          }}
+        />
+      )}
     </section>
   );
 }

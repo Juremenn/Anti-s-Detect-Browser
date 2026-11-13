@@ -1,29 +1,45 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ChevronDown,
+  Download,
+  FileSpreadsheet,
   FlaskConical,
+  Layers,
   Play,
   Plus,
   Search,
   Square,
+  Tag,
   Trash2,
   X,
   Zap,
 } from 'lucide-react';
 import { t } from '../i18n';
+import { Button } from './ui/Button';
+import { IconButton } from './ui/IconButton';
+import { Kbd } from './ui/Kbd';
+import { SegmentedControl } from './ui/SegmentedControl';
 
 interface TopBarProps {
   onNewProfile: () => void;
   onQuickProfile: () => void;
+  onFromTemplate?: () => void;
+  onBulkCreate?: () => void;
+  onImportProfile?: () => void;
   onTestFingerprint: () => void;
   search: string;
   onSearchChange: (value: string) => void;
   statusFilter: string;
   onStatusFilterChange: (value: string) => void;
+  selectedTag?: string;
+  onTagChange?: (tag: string) => void;
+  allTags?: string[];
   totalProfilesCount: number;
   selectedCount?: number;
   onBulkStart?: () => void;
   onBulkStop?: () => void;
+  onBulkAssignProxy?: () => void;
+  onBulkAddTag?: () => void;
   onBulkTrash?: () => void;
   onDeselectAll?: () => void;
 }
@@ -31,15 +47,23 @@ interface TopBarProps {
 export function TopBar({
   onNewProfile,
   onQuickProfile,
+  onFromTemplate,
+  onBulkCreate,
+  onImportProfile,
   onTestFingerprint,
   search,
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
+  selectedTag = 'all',
+  onTagChange,
+  allTags = [],
   totalProfilesCount,
   selectedCount = 0,
   onBulkStart,
   onBulkStop,
+  onBulkAssignProxy,
+  onBulkAddTag,
   onBulkTrash,
   onDeselectAll,
 }: TopBarProps) {
@@ -47,7 +71,6 @@ export function TopBar({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Close split dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -58,7 +81,7 @@ export function TopBar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Global Ctrl+K / Cmd+K listener to focus search input
+  // Global Ctrl+K listener
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -74,7 +97,7 @@ export function TopBar({
   const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent);
   const shortcutLabel = isMac ? t.topbar.searchShortcutMac : t.topbar.searchShortcut;
 
-  // Render Bulk Selection Contextual Bar when rows are selected
+  // Contextual Bar when 1+ rows selected
   if (selectedCount > 0) {
     return (
       <header
@@ -93,7 +116,7 @@ export function TopBar({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span
             style={{
-              fontSize: 12.5,
+              fontSize: 'var(--text-body)',
               fontWeight: 600,
               color: 'var(--text-primary)',
             }}
@@ -104,55 +127,50 @@ export function TopBar({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {onBulkStart && (
-            <button
-              className="btn btn-ghost"
-              onClick={onBulkStart}
-              title={t.bulk.start}
-            >
-              <Play size={13} strokeWidth={1.5} color="var(--status-running)" />
+            <Button variant="ghost" size="sm" onClick={onBulkStart} title={t.bulk.start}>
+              <Play size={12} strokeWidth={2} color="var(--status-success)" />
               <span>{t.bulk.start}</span>
-            </button>
+            </Button>
           )}
 
           {onBulkStop && (
-            <button
-              className="btn btn-ghost"
-              onClick={onBulkStop}
-              title={t.bulk.stop}
-            >
-              <Square size={12} strokeWidth={1.5} color="var(--status-error)" />
+            <Button variant="ghost" size="sm" onClick={onBulkStop} title={t.bulk.stop}>
+              <Square size={12} strokeWidth={2} color="var(--status-danger)" />
               <span>{t.bulk.stop}</span>
-            </button>
+            </Button>
+          )}
+
+          {onBulkAssignProxy && (
+            <Button variant="ghost" size="sm" onClick={onBulkAssignProxy} title={t.bulk.assignProxy}>
+              <span>{t.bulk.assignProxy}</span>
+            </Button>
+          )}
+
+          {onBulkAddTag && (
+            <Button variant="ghost" size="sm" onClick={onBulkAddTag} title={t.bulk.addTag}>
+              <Tag size={12} strokeWidth={1.5} />
+              <span>{t.bulk.addTag}</span>
+            </Button>
           )}
 
           {onBulkTrash && (
-            <button
-              className="btn btn-danger"
-              onClick={onBulkTrash}
-              title={t.bulk.moveToTrash}
-            >
-              <Trash2 size={13} strokeWidth={1.5} />
+            <Button variant="danger" size="sm" onClick={onBulkTrash} title={t.bulk.moveToTrash}>
+              <Trash2 size={12} strokeWidth={1.5} />
               <span>{t.bulk.moveToTrash}</span>
-            </button>
+            </Button>
           )}
 
           {onDeselectAll && (
-            <button
-              className="btn btn-ghost"
-              onClick={onDeselectAll}
-              title={t.bulk.clear}
-              style={{ marginLeft: 4 }}
-            >
+            <IconButton size="sm" onClick={onDeselectAll} tooltip={t.bulk.clear}>
               <X size={13} strokeWidth={1.5} />
-              <span>{t.bulk.clear}</span>
-            </button>
+            </IconButton>
           )}
         </div>
       </header>
     );
   }
 
-  // Standard Top Bar
+  // Normal Top Bar
   return (
     <header
       style={{
@@ -167,11 +185,11 @@ export function TopBar({
         gap: 12,
       }}
     >
-      {/* Title & Count */}
+      {/* Title & Total Count */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         <h1
           style={{
-            fontSize: 13.5,
+            fontSize: 'var(--text-section)',
             fontWeight: 600,
             color: 'var(--text-primary)',
             letterSpacing: -0.2,
@@ -181,10 +199,10 @@ export function TopBar({
         </h1>
         <span
           style={{
-            fontSize: 11,
+            fontSize: 'var(--text-caption)',
             fontWeight: 500,
             color: 'var(--text-tertiary)',
-            backgroundColor: 'rgba(255, 255, 255, 0.04)',
+            backgroundColor: 'var(--bg-raised)',
             padding: '1px 6px',
             borderRadius: 4,
             fontFamily: 'var(--font-mono)',
@@ -195,40 +213,33 @@ export function TopBar({
         </span>
       </div>
 
-      {/* Middle-Right: Search & Segmented Filter */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'flex-end' }}>
-        {/* Search Input with Ctrl+K shortcut hint */}
-        <div
-          style={{
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            width: 220,
-          }}
-        >
+      {/* Middle & Right Actions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'flex-end' }}>
+        {/* Search */}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: 220 }}>
           <Search
             size={13}
             strokeWidth={1.5}
             color="var(--text-tertiary)"
-            style={{
-              position: 'absolute',
-              left: 8,
-              pointerEvents: 'none',
-            }}
+            style={{ position: 'absolute', left: 8, pointerEvents: 'none' }}
           />
           <input
             ref={searchInputRef}
             type="text"
-            className="input-field"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t.topbar.searchPlaceholder}
             style={{
               width: '100%',
+              height: 'var(--control-height-sm)',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-control)',
               paddingLeft: 26,
               paddingRight: search ? 24 : 48,
-              height: 28,
-              fontSize: 12,
+              fontSize: 'var(--text-label)',
+              color: 'var(--text-primary)',
+              outline: 'none',
             }}
           />
           {search ? (
@@ -245,114 +256,151 @@ export function TopBar({
                 alignItems: 'center',
                 padding: 2,
               }}
-              title="Clear search"
             >
               <X size={12} strokeWidth={1.5} />
             </button>
           ) : (
-            <kbd
-              style={{
-                position: 'absolute',
-                right: 6,
-                fontSize: 10,
-                fontFamily: 'var(--font-mono)',
-                color: 'var(--text-tertiary)',
-                backgroundColor: 'var(--bg-raised)',
-                border: '1px solid var(--border)',
-                borderRadius: 3,
-                padding: '1px 4px',
-                pointerEvents: 'none',
-                userSelect: 'none',
-              }}
-            >
-              {shortcutLabel}
-            </kbd>
+            <div style={{ position: 'absolute', right: 6 }}>
+              <Kbd>{shortcutLabel}</Kbd>
+            </div>
           )}
         </div>
 
-        {/* Status Filter as Segmented Control (All / Running / Idle) */}
-        <div className="segmented-control">
-          <button
-            className={`segmented-item ${statusFilter === 'all' ? 'active' : ''}`}
-            onClick={() => onStatusFilterChange('all')}
-          >
-            {t.topbar.filterAll}
-          </button>
-          <button
-            className={`segmented-item ${statusFilter === 'active' ? 'active' : ''}`}
-            onClick={() => onStatusFilterChange('active')}
-          >
-            {t.topbar.filterRunning}
-          </button>
-          <button
-            className={`segmented-item ${statusFilter === 'idle' ? 'active' : ''}`}
-            onClick={() => onStatusFilterChange('idle')}
-          >
-            {t.topbar.filterIdle}
-          </button>
-        </div>
+        {/* Segmented Control: All / Running / Idle */}
+        <SegmentedControl
+          size="sm"
+          value={statusFilter}
+          onChange={onStatusFilterChange}
+          options={[
+            { value: 'all', label: t.topbar.filterAll },
+            { value: 'active', label: t.topbar.filterRunning },
+            { value: 'idle', label: t.topbar.filterIdle },
+          ]}
+        />
 
-        {/* Ghost Icon Button: Fingerprint Test */}
-        <button
-          className="btn-icon"
-          onClick={onTestFingerprint}
-          title={t.topbar.testFingerprintTooltip}
-        >
-          <FlaskConical size={15} strokeWidth={1.5} />
-        </button>
+        {/* Tag Filter (if tags exist) */}
+        {allTags.length > 0 && onTagChange && (
+          <select
+            value={selectedTag}
+            onChange={(e) => onTagChange(e.target.value)}
+            style={{
+              height: 'var(--control-height-sm)',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-control)',
+              padding: '0 8px',
+              fontSize: 'var(--text-label)',
+              color: 'var(--text-secondary)',
+              outline: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            <option value="all">{t.topbar.filterTag}</option>
+            {allTags.map((tag) => (
+              <option key={tag} value={tag}>
+                {tag}
+              </option>
+            ))}
+          </select>
+        )}
 
-        {/* Far Right: ONE Primary Action "New Profile" with split dropdown */}
+        {/* Fingerprint Test Ghost Button */}
+        <IconButton size="sm" onClick={onTestFingerprint} tooltip={t.topbar.fingerprintTest}>
+          <FlaskConical size={14} strokeWidth={1.5} />
+        </IconButton>
+
+        {/* Primary Action "New Profile" with split dropdown */}
         <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-flex' }}>
           <div style={{ display: 'inline-flex', alignItems: 'stretch' }}>
-            <button
-              className="btn btn-primary"
+            <Button
+              variant="primary"
+              size="sm"
               onClick={onNewProfile}
-              style={{
-                borderTopRightRadius: 0,
-                borderBottomRightRadius: 0,
-                borderRight: '1px solid rgba(255, 255, 255, 0.2)',
-                padding: '0 10px',
-              }}
+              style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRight: '1px solid rgba(255, 255, 255, 0.2)' }}
             >
-              <Plus size={14} strokeWidth={2} />
+              <Plus size={13} strokeWidth={2} />
               <span>{t.topbar.newProfile}</span>
-            </button>
-            <button
-              className="btn btn-primary"
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => setDropdownOpen(!dropdownOpen)}
-              title={t.topbar.quickProfile}
-              style={{
-                borderTopLeftRadius: 0,
-                borderBottomLeftRadius: 0,
-                padding: '0 6px',
-              }}
+              style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, padding: '0 6px' }}
+              title="More creation options"
             >
               <ChevronDown size={12} strokeWidth={2} />
-            </button>
+            </Button>
           </div>
 
-          {/* Popover Menu for Quick Profile */}
           {dropdownOpen && (
             <div
-              className="popover-menu"
               style={{
                 position: 'absolute',
                 top: 'calc(100% + 4px)',
                 right: 0,
                 width: 170,
+                backgroundColor: 'var(--bg-overlay)',
+                border: '1px solid var(--border-strong)',
+                borderRadius: 'var(--radius-control)',
+                boxShadow: 'var(--shadow-popover)',
+                padding: 4,
+                zIndex: 3000,
                 animation: 'fadeIn 100ms ease-out',
               }}
             >
               <button
-                className="menu-item"
+                type="button"
                 onClick={() => {
                   setDropdownOpen(false);
                   onQuickProfile();
                 }}
+                className="menu-item"
               >
-                <Zap size={14} strokeWidth={1.5} color="var(--accent)" />
+                <Zap size={13} strokeWidth={1.5} color="var(--accent)" />
                 <span>{t.topbar.quickProfile}</span>
               </button>
+
+              {onFromTemplate && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    onFromTemplate();
+                  }}
+                  className="menu-item"
+                >
+                  <Layers size={13} strokeWidth={1.5} />
+                  <span>{t.topbar.fromTemplate}</span>
+                </button>
+              )}
+
+              {onBulkCreate && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    onBulkCreate();
+                  }}
+                  className="menu-item"
+                >
+                  <FileSpreadsheet size={13} strokeWidth={1.5} />
+                  <span>{t.topbar.bulkCreate}</span>
+                </button>
+              )}
+
+              {onImportProfile && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    onImportProfile();
+                  }}
+                  className="menu-item"
+                >
+                  <Download size={13} strokeWidth={1.5} />
+                  <span>{t.topbar.importProfile}</span>
+                </button>
+              )}
             </div>
           )}
         </div>

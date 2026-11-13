@@ -119,7 +119,7 @@ export function TemplatesView({ presets, onApplyPreset }: TemplatesViewProps) {
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-tertiary)' }}>CPU / RAM:</span>
                     <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                      {preset.cores} Cores · {preset.memory_gb} GB
+                      {preset.cores || preset.hardware_concurrency || 8} Cores · {preset.memory_gb || preset.device_memory || 8} GB
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>

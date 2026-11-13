@@ -1,16 +1,6 @@
-/**
- * formatters.ts - Parsing and string formatters for dense, single-line data display.
- */
-
+import { t } from '../i18n';
 import { Profile } from '../types';
 
-/**
- * Parses out clean GPU brand and model from verbose ANGLE/WebGL renderer strings.
- * Example inputs:
- *  - "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)" -> "RTX 3070"
- *  - "ANGLE (Apple, Apple M2, OpenGL 4.1)" -> "Apple M2"
- *  - "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)" -> "Intel UHD 630"
- */
 export function parseGpuName(rawRenderer?: string): string {
   if (!rawRenderer) return 'Standard GPU';
   const str = rawRenderer.trim();
@@ -50,13 +40,9 @@ export function parseGpuName(rawRenderer?: string): string {
     return clean;
   }
 
-  // Fallback: truncate cleanly
   return str.length > 28 ? `${str.substring(0, 26)}...` : str;
 }
 
-/**
- * Returns single line spec: "[GPU] · [Cores]C/[RAM]GB · [Width]×[Height]"
- */
 export function formatFingerprintSpec(profile: Profile): string {
   const gpu = parseGpuName(profile.webgl_renderer);
   const cores = profile.hardware_concurrency || 8;
@@ -66,16 +52,14 @@ export function formatFingerprintSpec(profile: Profile): string {
   return `${gpu} · ${cores}C/${ram}GB · ${w}×${h}`;
 }
 
-/**
- * Formats a proxy string into host:port without credentials, plus protocol.
- */
 export function formatProxy(proxyStr?: string | null): {
   isDirect: boolean;
   hostPort: string;
   protocol: string;
+  countryCode: string;
 } {
   if (!proxyStr || !proxyStr.trim()) {
-    return { isDirect: true, hostPort: 'Direct', protocol: '' };
+    return { isDirect: true, hostPort: t.table.directProxy, protocol: '', countryCode: '' };
   }
 
   const raw = proxyStr.trim();
@@ -83,12 +67,26 @@ export function formatProxy(proxyStr?: string | null): {
     const url = new URL(raw.includes('://') ? raw : `http://${raw}`);
     const protocol = (url.protocol.replace(':', '') || 'http').toUpperCase();
     const hostPort = `${url.hostname}${url.port ? `:${url.port}` : ''}`;
-    return { isDirect: false, hostPort, protocol };
+    // Simple heuristic for country/flag if present or default
+    return { isDirect: false, hostPort, protocol, countryCode: '' };
   } catch {
-    // Fallback if URL parsing fails: strip auth if any
     const withoutScheme = raw.replace(/^https?:\/\/|^socks[45]:\/\//i, '');
     const withoutAuth = withoutScheme.includes('@') ? withoutScheme.split('@')[1] : withoutScheme;
-    return { isDirect: false, hostPort: withoutAuth, protocol: 'PROXY' };
+    return { isDirect: false, hostPort: withoutAuth, protocol: 'PROXY', countryCode: '' };
   }
 }
 
+export function formatRelativeTime(timestamp?: number | string): string {
+  if (!timestamp) return t.table.neverUsed;
+  const num = typeof timestamp === 'number' ? timestamp : parseInt(String(timestamp), 10);
+  if (isNaN(num) || num <= 0) return t.table.neverUsed;
+
+  // normalize seconds vs ms
+  const tsMs = num < 10000000000 ? num * 1000 : num;
+  const diffSec = Math.floor((Date.now() - tsMs) / 1000);
+
+  if (diffSec < 60) return t.table.justNow;
+  if (diffSec < 3600) return t.table.minutesAgo(Math.floor(diffSec / 60));
+  if (diffSec < 86400) return t.table.hoursAgo(Math.floor(diffSec / 3600));
+  return t.table.daysAgo(Math.floor(diffSec / 86400));
+}

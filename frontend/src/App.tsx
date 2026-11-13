@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api';
 import { Sidebar } from './components/Sidebar';
 import { ToastContainer } from './components/Toast';
@@ -15,6 +15,7 @@ import {
   ToastMessage,
   TrashItem,
 } from './types';
+import { ExtensionsView } from './views/ExtensionsView';
 import { ProfilesView } from './views/ProfilesView';
 import { ProxiesView } from './views/ProxiesView';
 import { SettingsView } from './views/SettingsView';
@@ -39,6 +40,13 @@ export default function App() {
   const [createModalPresetIdx, setCreateModalPresetIdx] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [tagFilter, setTagFilter] = useState('all');
+
+  // Theme support (dark default)
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('octo_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+  }, []);
 
   const addToast = useCallback((message: string, type: 'info' | 'success' | 'error' = 'info') => {
     const id = `t_${Date.now()}_${Math.random()}`;
@@ -52,14 +60,13 @@ export default function App() {
     setToasts((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
-  // Fetch initial data
+  // Fetch data
   const loadProfiles = useCallback(async () => {
     try {
       const data = await api.getProfiles();
       setProfiles(data.profiles || []);
       if (data.active_engine) setActiveEngine(data.active_engine);
 
-      // Clean selections for profiles no longer existing
       const existing = new Set(data.profiles.map((p) => p.name));
       setSelectedProfiles((prev) => {
         const next = new Set<string>();
@@ -117,7 +124,7 @@ export default function App() {
     loadSettings();
   }, [loadProfiles, loadTrash, loadProxies, loadPresets, loadSettings]);
 
-  // Background polling every 2s
+  // Polling every 2s
   useEffect(() => {
     const timer = setInterval(() => {
       if (activeTab === 'profiles') {
@@ -129,7 +136,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, [activeTab, loadProfiles, loadTrash]);
 
-  // Global Ctrl+N / Cmd+N for New Profile
+  // Global Ctrl+N
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
@@ -142,7 +149,18 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Actions: Profiles
+  // Collect all unique tags for filter
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    for (const p of profiles) {
+      for (const t of p.tags || []) {
+        if (t && t.toLowerCase() !== 'default') tagSet.add(t);
+      }
+    }
+    return Array.from(tagSet);
+  }, [profiles]);
+
+  // Profile actions
   async function handleStartProfile(name: string) {
     try {
       await api.startProfile(name);
@@ -205,11 +223,35 @@ export default function App() {
     }
   }
 
-  // Bulk Actions
+  async function handleRegenerateIdentity(name: string) {
+    try {
+      await api.refreshFingerprint(name);
+      addToast(`Identity regenerated for '${name}'.`, 'success');
+      await loadProfiles();
+    } catch (e: unknown) {
+      addToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  async function handleExportProfile(name: string) {
+    const profile = profiles.find((p) => p.name === name);
+    if (!profile) return;
+    const jsonStr = JSON.stringify(profile, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}_config.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast(`Exported config for '${name}'.`, 'info');
+  }
+
+  // Bulk actions
   async function handleBulkStart() {
     if (selectedProfiles.size === 0) return;
     const list = Array.from(selectedProfiles);
-    addToast(t.toast.bulkStarting(list.length), 'info');
+    addToast(`Starting ${list.length} profiles...`, 'info');
     for (const name of list) {
       try {
         await api.startProfile(name);
@@ -223,7 +265,7 @@ export default function App() {
   async function handleBulkStop() {
     if (selectedProfiles.size === 0) return;
     const list = Array.from(selectedProfiles);
-    addToast(t.toast.bulkStopping(list.length), 'info');
+    addToast(`Stopping ${list.length} profiles...`, 'info');
     for (const name of list) {
       try {
         await api.stopProfile(name);
@@ -246,7 +288,7 @@ export default function App() {
       }
     }
     setSelectedProfiles(new Set());
-    addToast(t.toast.bulkTrashed(list.length), 'info');
+    addToast(`${list.length} profiles moved to trash.`, 'info');
     await loadProfiles();
     await loadTrash();
   }
@@ -266,12 +308,12 @@ export default function App() {
 
   async function handleTestFingerprint(specificProfileName?: string) {
     if (profiles.length === 0) {
-      addToast(t.toast.noProfileForTest, 'error');
+      addToast('Create a profile first to run fingerprint test.', 'error');
       return;
     }
     const target = specificProfileName || profiles[0].name;
     try {
-      addToast(t.toast.testingFingerprint(target), 'info');
+      addToast(`Testing fingerprint with '${target}'...`, 'info');
       await api.startProfile(target, 'https://browserleaks.com/canvas');
       await loadProfiles();
     } catch (e: unknown) {
@@ -286,11 +328,11 @@ export default function App() {
     setActiveTab('profiles');
   }
 
-  // Trash Actions
+  // Trash actions
   async function handleRestoreTrash(trashId: string) {
     try {
       const res = await api.restoreTrash(trashId);
-      addToast(t.toast.profileRestored(res.name), 'success');
+      addToast(`Profile '${res.name}' restored.`, 'success');
       await loadTrash();
       await loadProfiles();
     } catch (e: unknown) {
@@ -311,35 +353,35 @@ export default function App() {
   async function handlePurgeAllTrash() {
     try {
       await api.purgeTrash();
-      addToast(t.toast.trashCleared, 'info');
+      addToast('Trash bin emptied.', 'info');
       await loadTrash();
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
     }
   }
 
-  // Proxy Actions
+  // Proxy actions
   async function handleAddProxy(title: string, url: string) {
     await api.addProxy(title, url);
-    addToast(t.toast.proxyAdded(title || url), 'success');
+    addToast(`Proxy '${title || url}' added successfully.`, 'success');
     await loadProxies();
   }
 
   async function handleDeleteProxy(id: string) {
     try {
       await api.deleteProxy(id);
-      addToast(t.toast.proxyDeleted, 'info');
+      addToast('Proxy deleted.', 'info');
       await loadProxies();
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
     }
   }
 
-  // Settings Actions
+  // Settings actions
   async function handleSaveSettings(newSettings: Partial<AppSettings>) {
     try {
       await api.saveSettings(newSettings);
-      addToast(t.toast.settingsSaved, 'success');
+      addToast('Settings saved successfully.', 'success');
       await loadSettings();
       await loadProfiles();
     } catch (e: unknown) {
@@ -370,11 +412,21 @@ export default function App() {
                 setCreateModalOpen(true);
               }}
               onQuickProfile={handleQuickProfile}
+              onFromTemplate={() => setActiveTab('templates')}
+              onBulkCreate={() => {
+                addToast('Bulk create will open in Phase 4', 'info');
+              }}
+              onImportProfile={() => {
+                addToast('Import profiles will open in Phase 4', 'info');
+              }}
               onTestFingerprint={() => handleTestFingerprint()}
               search={searchQuery}
               onSearchChange={setSearchQuery}
               statusFilter={statusFilter}
               onStatusFilterChange={setStatusFilter}
+              selectedTag={tagFilter}
+              onTagChange={setTagFilter}
+              allTags={allTags}
               totalProfilesCount={profiles.length}
               selectedCount={selectedProfiles.size}
               onBulkStart={handleBulkStart}
@@ -403,9 +455,14 @@ export default function App() {
               onDeselectAll={() => setSelectedProfiles(new Set())}
               onStartProfile={handleStartProfile}
               onStopProfile={handleStopProfile}
+              onEditProfile={(name) => {
+                addToast(`Edit profile '${name}' will open full dialog in Phase 2`, 'info');
+              }}
               onOpenFolder={handleOpenFolder}
               onTrashProfile={handleTrashProfile}
               onDuplicateProfile={handleDuplicateProfile}
+              onRegenerateIdentity={handleRegenerateIdentity}
+              onExportProfile={handleExportProfile}
               onTestProfile={(name) => handleTestFingerprint(name)}
               onOpenNewProfileModal={() => {
                 setCreateModalPresetIdx(0);
@@ -413,17 +470,9 @@ export default function App() {
               }}
               searchQuery={searchQuery}
               statusFilter={statusFilter}
+              tagFilter={tagFilter}
             />
           </>
-        )}
-
-        {activeTab === 'trash' && (
-          <TrashView
-            items={trashItems}
-            onRestore={handleRestoreTrash}
-            onPurge={handlePurgeTrash}
-            onPurgeAll={handlePurgeAllTrash}
-          />
         )}
 
         {activeTab === 'proxies' && (
@@ -441,6 +490,17 @@ export default function App() {
               setCreateModalPresetIdx(idx);
               setCreateModalOpen(true);
             }}
+          />
+        )}
+
+        {activeTab === 'extensions' && <ExtensionsView />}
+
+        {activeTab === 'trash' && (
+          <TrashView
+            items={trashItems}
+            onRestore={handleRestoreTrash}
+            onPurge={handlePurgeTrash}
+            onPurgeAll={handlePurgeAllTrash}
           />
         )}
 

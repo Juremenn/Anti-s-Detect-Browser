@@ -131,11 +131,24 @@ export function CreateProfileModal({
             onChange={(e) => setPreset(parseInt(e.target.value, 10))}
             style={{ cursor: 'pointer' }}
           >
-            {presets.map((p, idx) => (
-              <option key={idx} value={idx} style={{ backgroundColor: 'var(--bg-surface)' }}>
-                {p.label} ({p.platform} · {p.cores}C/{p.memory_gb}GB)
-              </option>
-            ))}
+            {presets.map((p, idx) => {
+              const label =
+                p.label ||
+                `${p.os === 'mac' ? 'macOS' : p.os === 'linux' ? 'Linux' : 'Windows'} · ${
+                  p.name || 'Standard'
+                } · ${p.cores || p.hardware_concurrency || 8}C/${
+                  p.memory_gb || p.device_memory || 8
+                }GB · ${
+                  p.screen
+                    ? `${p.screen[0]}×${p.screen[1]}`
+                    : `${p.screen_width || 1920}×${p.screen_height || 1080}`
+                }`;
+              return (
+                <option key={idx} value={idx} style={{ backgroundColor: 'var(--bg-surface)' }}>
+                  {label}
+                </option>
+              );
+            })}
           </select>
         </div>
 

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Globe,
   LayoutTemplate,
   PanelLeft,
   PanelLeftClose,
+  Puzzle,
   Settings,
   Trash2,
   Users,
@@ -30,7 +31,13 @@ export function Sidebar({
   activeEngine,
   runningCount,
 }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    return localStorage.getItem('octo_sidebar_collapsed') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('octo_sidebar_collapsed', String(collapsed));
+  }, [collapsed]);
 
   const navItems = [
     {
@@ -49,6 +56,11 @@ export function Sidebar({
       id: 'templates' as TabId,
       label: t.nav.templates,
       icon: LayoutTemplate,
+    },
+    {
+      id: 'extensions' as TabId,
+      label: t.nav.extensions,
+      icon: Puzzle,
     },
     {
       id: 'trash' as TabId,
@@ -173,7 +185,7 @@ export function Sidebar({
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-hover-row)';
+                  e.currentTarget.style.backgroundColor = 'var(--bg-row-hover)';
                   e.currentTarget.style.color = 'var(--text-primary)';
                 }
               }}
@@ -266,7 +278,7 @@ export function Sidebar({
           alignItems: collapsed ? 'center' : 'stretch',
         }}
       >
-        {/* Offline Status Indicator */}
+        {/* Offline Status Dot + Label */}
         <div
           style={{
             display: 'flex',
@@ -282,14 +294,13 @@ export function Sidebar({
               width: 6,
               height: 6,
               borderRadius: '50%',
-              backgroundColor: 'var(--status-idle)',
+              backgroundColor: 'var(--text-tertiary)',
               flexShrink: 0,
             }}
           />
           {!collapsed && <span>{t.sidebar.offline}</span>}
         </div>
 
-        {/* Engine Path & Summary Stats */}
         {!collapsed && (
           <>
             <div

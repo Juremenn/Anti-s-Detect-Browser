@@ -1,9 +1,11 @@
-export type TabId = 'profiles' | 'proxies' | 'templates' | 'trash' | 'settings';
+export type TabId = 'profiles' | 'proxies' | 'templates' | 'extensions' | 'trash' | 'settings';
 
 export interface Profile {
   name: string;
   created_at?: string;
-  canvas_seed?: string;
+  last_used_at?: number | string;
+  canvas_seed?: string | number;
+  audio_seed?: string | number;
   webgl_renderer?: string;
   platform?: string;
   hardware_concurrency?: number;
@@ -12,10 +14,11 @@ export interface Profile {
   screen_height?: number;
   audio_noise?: boolean;
   webrtc_mode?: string;
-  proxy?: string;
+  proxy?: string | null;
   tags?: string[];
-  notes?: string;
   folder?: string;
+  color?: string;
+  notes?: string;
   is_active?: boolean;
   pid?: number | null;
 }
@@ -26,23 +29,45 @@ export interface TrashItem {
   trashed_at: number | string;
   webgl_renderer?: string;
   platform?: string;
+  tags?: string[];
+  folder?: string;
 }
 
 export interface ProxyItem {
   id: string;
   title: string;
   url: string;
+  type?: string;
+  host?: string;
+  port?: number;
+  country?: string;
+  latency?: number;
+  status?: 'ok' | 'failed' | 'unchecked';
   added_at?: number;
 }
 
 export interface Preset {
+  id?: string;
+  name?: string;
   label: string;
+  os?: string;
   platform: string;
-  gpu_vendor: string;
-  gpu_renderer: string;
-  cores: number;
-  memory_gb: number;
-  screen: [number, number];
+  platform_version?: string;
+  webgl_vendor?: string;
+  webgl_renderer: string;
+  gpu_vendor?: string;
+  gpu_renderer?: string;
+  cores?: number;
+  hardware_concurrency?: number;
+  memory_gb?: number;
+  device_memory?: number;
+  screen?: [number, number];
+  screen_width?: number;
+  screen_height?: number;
+  color_depth?: number;
+  device_pixel_ratio?: number;
+  languages?: string[];
+  user_agent?: string;
 }
 
 export interface BrowserItem {
@@ -56,26 +81,31 @@ export interface AppSettings {
   mask_webrtc: boolean;
   active_browser_path?: string;
   browsers?: Array<string | BrowserItem>;
+  theme?: 'dark' | 'light';
+  language?: 'en' | 'id';
 }
 
 export interface CreateProfilePayload {
   name: string;
-  preset?: number;
+  preset?: number | string;
   tags?: string[];
+  folder?: string;
   proxy?: string | null;
   notes?: string;
 }
 
 export interface ProfilesResponse {
   profiles: Profile[];
-  folders: string[];
-  active_engine: string;
-  trash_count: number;
+  active_engine?: string;
+  folders?: string[];
+  all_tags?: string[];
 }
 
 export interface ToastMessage {
   id: string;
   message: string;
-  type?: 'info' | 'success' | 'error';
+  type: 'info' | 'success' | 'error';
 }
 
+export type SortField = 'name' | 'status' | 'last_used' | 'proxy';
+export type SortDirection = 'asc' | 'desc';
