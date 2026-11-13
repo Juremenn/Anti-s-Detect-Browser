@@ -36,6 +36,8 @@ export const en = {
     importProfile: 'Import',
     fingerprintTest: 'Fingerprint test',
     testFingerprintTooltip: 'Launch local fingerprint test',
+    themeToggleDark: 'Switch to light mode',
+    themeToggleLight: 'Switch to dark mode',
   },
 
   bulk: {
@@ -297,6 +299,11 @@ export const en = {
   settings: {
     title: 'Settings',
     description: 'Global browser execution and fingerprint masking parameters.',
+    appearanceTitle: 'Appearance',
+    appearanceHelp: 'Customize UI theme mode across the studio.',
+    themeDark: 'Dark',
+    themeLight: 'Light',
+    themeSystem: 'System',
     browserPath: 'Chromium Executable Path',
     browserPathHelp: 'Leave blank to auto-detect Chrome/Brave/Edge installed on your system.',
     startUrl: 'Default Launch URL',

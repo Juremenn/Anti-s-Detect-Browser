@@ -38,6 +38,8 @@ export const id: Translations = {
     importProfile: 'Impor',
     fingerprintTest: 'Uji fingerprint',
     testFingerprintTooltip: 'Uji fingerprint lokal',
+    themeToggleDark: 'Ganti ke mode terang',
+    themeToggleLight: 'Ganti ke mode gelap',
   },
 
   bulk: {
@@ -299,6 +301,11 @@ export const id: Translations = {
   settings: {
     title: 'Pengaturan',
     description: 'Parameter eksekusi browser dan masking fingerprint global.',
+    appearanceTitle: 'Tampilan',
+    appearanceHelp: 'Sesuaikan mode tema antarmuka studio.',
+    themeDark: 'Gelap',
+    themeLight: 'Terang',
+    themeSystem: 'Sistem',
     browserPath: 'Path Executable Chromium',
     browserPathHelp: 'Biarkan kosong untuk deteksi otomatis Chrome/Brave/Edge di PC Anda.',
     startUrl: 'URL Awal',

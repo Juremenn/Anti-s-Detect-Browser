@@ -1,8 +1,9 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api';
 import { Sidebar } from './components/Sidebar';
 import { ToastContainer } from './components/Toast';
 import { TopBar } from './components/TopBar';
+import { useTheme } from './hooks/useTheme';
 import { t } from './i18n';
 import { ProfileEditDialog } from './modals/ProfileEditDialog';
 import {
@@ -42,11 +43,8 @@ export default function App() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState('all');
 
-  // Theme support (dark default)
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('octo_theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-  }, []);
+  // Theme management (Dark / Light / System)
+  const { themeMode, resolvedTheme, setThemeMode, toggleTheme } = useTheme();
 
   const addToast = useCallback((message: string, type: 'info' | 'success' | 'error' = 'info') => {
     const id = `t_${Date.now()}_${Math.random()}`;
@@ -497,6 +495,8 @@ export default function App() {
               onBulkStop={handleBulkStop}
               onBulkTrash={handleBulkTrash}
               onDeselectAll={() => setSelectedProfiles(new Set())}
+              resolvedTheme={resolvedTheme}
+              onToggleTheme={toggleTheme}
             />
             <ProfilesView
               profiles={profiles}
@@ -568,6 +568,8 @@ export default function App() {
           <SettingsView
             settings={settings}
             onSave={handleSaveSettings}
+            themeMode={themeMode}
+            onChangeThemeMode={setThemeMode}
           />
         )}
       </main>

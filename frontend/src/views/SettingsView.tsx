@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Save } from 'lucide-react';
 import { Checkbox } from '../components/Checkbox';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { t } from '../i18n';
-import { AppSettings } from '../types';
+import { AppSettings, ThemeMode } from '../types';
 
 interface SettingsViewProps {
   settings: AppSettings;
   onSave: (settings: Partial<AppSettings>) => Promise<void>;
+  themeMode?: ThemeMode;
+  onChangeThemeMode?: (mode: ThemeMode) => void;
 }
 
-export function SettingsView({ settings, onSave }: SettingsViewProps) {
+export function SettingsView({ settings, onSave, themeMode = 'dark', onChangeThemeMode }: SettingsViewProps) {
   const [browserPath, setBrowserPath] = useState(settings?.browser_path || '');
   const [startUrl, setStartUrl] = useState(settings?.start_url || 'https://browserleaks.com/canvas');
   const [maskWebRTC, setMaskWebRTC] = useState(settings?.mask_webrtc ?? true);
@@ -76,6 +79,42 @@ export function SettingsView({ settings, onSave }: SettingsViewProps) {
             gap: 16,
           }}
         >
+          {/* Appearance / Theme */}
+          <div
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-panel)',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                {t.settings.appearanceTitle}
+              </label>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                {t.settings.appearanceHelp}
+              </div>
+            </div>
+
+            {onChangeThemeMode && (
+              <div style={{ maxWidth: 280 }}>
+                <SegmentedControl
+                  value={themeMode}
+                  onChange={(val) => onChangeThemeMode(val as ThemeMode)}
+                  options={[
+                    { value: 'dark', label: t.settings.themeDark },
+                    { value: 'light', label: t.settings.themeLight },
+                    { value: 'system', label: t.settings.themeSystem },
+                  ]}
+                />
+              </div>
+            )}
+          </div>
+
           {/* Chromium Executable */}
           <div
             style={{

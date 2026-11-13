@@ -5,10 +5,12 @@ import {
   FileSpreadsheet,
   FlaskConical,
   Layers,
+  Moon,
   Play,
   Plus,
   Search,
   Square,
+  Sun,
   Tag,
   Trash2,
   X,
@@ -42,6 +44,8 @@ interface TopBarProps {
   onBulkAddTag?: () => void;
   onBulkTrash?: () => void;
   onDeselectAll?: () => void;
+  resolvedTheme?: 'dark' | 'light';
+  onToggleTheme?: () => void;
 }
 
 export function TopBar({
@@ -66,6 +70,8 @@ export function TopBar({
   onBulkAddTag,
   onBulkTrash,
   onDeselectAll,
+  resolvedTheme = 'dark',
+  onToggleTheme,
 }: TopBarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -308,6 +314,21 @@ export function TopBar({
         <IconButton size="sm" onClick={onTestFingerprint} tooltip={t.topbar.fingerprintTest}>
           <FlaskConical size={14} strokeWidth={1.5} />
         </IconButton>
+
+        {/* Theme Toggle (Dark / Light) */}
+        {onToggleTheme && (
+          <IconButton
+            size="sm"
+            onClick={onToggleTheme}
+            tooltip={resolvedTheme === 'dark' ? t.topbar.themeToggleDark : t.topbar.themeToggleLight}
+          >
+            {resolvedTheme === 'dark' ? (
+              <Sun size={14} strokeWidth={1.5} />
+            ) : (
+              <Moon size={14} strokeWidth={1.5} />
+            )}
+          </IconButton>
+        )}
 
         {/* Primary Action "New Profile" with split dropdown */}
         <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-flex' }}>
