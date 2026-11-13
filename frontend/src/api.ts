@@ -1,6 +1,7 @@
 import {
   AppSettings,
   CreateProfilePayload,
+  CustomFingerprint,
   Preset,
   Profile,
   ProfilesResponse,
@@ -54,6 +55,11 @@ export const api = {
     request<{ status: string; profile: Profile }>('/api/profiles/refresh_fingerprint', {
       method: 'POST',
       body: JSON.stringify({ name }),
+    }),
+  setFingerprint: (name: string, fields: CustomFingerprint) =>
+    request<{ status: string; profile: Profile }>('/api/profiles/set_fingerprint', {
+      method: 'POST',
+      body: JSON.stringify({ name, fields }),
     }),
   openFolder: (name: string) =>
     request<{ status: string }>('/api/profiles/open_folder', {

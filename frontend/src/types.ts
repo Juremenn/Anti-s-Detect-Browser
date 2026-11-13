@@ -6,12 +6,17 @@ export interface Profile {
   last_used_at?: number | string;
   canvas_seed?: string | number;
   audio_seed?: string | number;
-  webgl_renderer?: string;
+  font_seed?: string | number;
   platform?: string;
+  webgl_vendor?: string;
+  webgl_renderer?: string;
+  user_agent?: string;
+  languages?: string[];
   hardware_concurrency?: number;
   device_memory?: number;
   screen_width?: number;
   screen_height?: number;
+  color_depth?: number;
   audio_noise?: boolean;
   webrtc_mode?: string;
   proxy?: string | null;
@@ -21,6 +26,9 @@ export interface Profile {
   notes?: string;
   is_active?: boolean;
   pid?: number | null;
+  diversify?: boolean;
+  custom?: boolean;
+  base_preset?: number;
 }
 
 export interface TrashItem {
@@ -85,9 +93,24 @@ export interface AppSettings {
   language?: 'en' | 'id';
 }
 
+export interface CustomFingerprint {
+  platform?: string;
+  webgl_vendor?: string;
+  webgl_renderer?: string;
+  hardware_concurrency?: number | string;
+  device_memory?: number | string;
+  screen_width?: number | string;
+  screen_height?: number | string;
+  user_agent?: string;
+  languages?: string;
+  color_depth?: number | string;
+}
+
 export interface CreateProfilePayload {
   name: string;
   preset?: number | string;
+  diversify?: boolean;
+  custom?: CustomFingerprint;
   tags?: string[];
   folder?: string;
   proxy?: string | null;

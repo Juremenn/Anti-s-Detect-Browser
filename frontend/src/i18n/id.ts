@@ -140,6 +140,33 @@ export const id: Translations = {
     addProxyBtn: 'Tambah Proksi',
     addingProxy: 'Menambahkan...',
     proxyUrlRequired: 'Alamat proksi wajib diisi.',
+    diversify: 'Pecah dari template (fingerprint unik per profil)',
+    diversifyHint:
+      'GPU, core, RAM, resolusi, dan versi UA diacak dari preset ini lalu disimpan tetap untuk profil ini, jadi tiap profil terbaca sebagai device berbeda.',
+    customOption: 'Custom (atur sendiri)',
+    customFingerprint: 'Fingerprint Kustom',
+    platform: 'Platform',
+    ram: 'RAM (GB)',
+    cores: 'CPU Core',
+    colorDepth: 'Color Depth',
+    resWidth: 'Resolusi Lebar',
+    resHeight: 'Resolusi Tinggi',
+    webglVendor: 'WebGL Vendor',
+    webglRenderer: 'WebGL Renderer',
+    userAgent: 'User Agent',
+    languages: 'Bahasa (pisahkan dengan koma)',
+    customHint:
+      'Kosongkan Vendor/Renderer/UA untuk memakai nilai preset terakhir yang dipilih. Seed canvas, audio, dan font selalu diacak otomatis.',
+    editFingerprintTitle: (name: string) => `Fingerprint - ${name}`,
+    storedSeeds: (c: string | number, a: string | number, f: string | number) =>
+      `Seed tersimpan: canvas ${c} | audio ${a} | font ${f}`,
+    runningWarning:
+      'Profil sedang berjalan. Hentikan dulu sebelum mengubah fingerprint.',
+    reroll: 'Acak Ulang',
+    rerollConfirm:
+      'Acak ulang fingerprint? Semua nilai akan diganti identity device baru.',
+    fingerprintSaved: (name: string) => `Fingerprint '${name}' disimpan.`,
+    fingerprintRerolled: (name: string) => `Fingerprint '${name}' diacak ulang dan tersimpan.`,
   },
 
   trash: {

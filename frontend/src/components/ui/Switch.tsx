@@ -61,3 +61,4 @@ export function Switch({ checked, onChange, label, disabled = false }: SwitchPro
     </label>
   );
 }
+

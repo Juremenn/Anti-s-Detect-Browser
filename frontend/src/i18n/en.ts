@@ -138,6 +138,33 @@ export const en = {
     addProxyBtn: 'Add Proxy',
     addingProxy: 'Adding...',
     proxyUrlRequired: 'Proxy URL is required.',
+    diversify: 'Split from template (unique fingerprint per profile)',
+    diversifyHint:
+      'GPU, cores, RAM, resolution and UA build are randomized from this preset, then kept fixed for this profile, so every profile reads as a different device.',
+    customOption: 'Custom (set manually)',
+    customFingerprint: 'Custom Fingerprint',
+    platform: 'Platform',
+    ram: 'RAM (GB)',
+    cores: 'CPU Cores',
+    colorDepth: 'Color Depth',
+    resWidth: 'Screen Width',
+    resHeight: 'Screen Height',
+    webglVendor: 'WebGL Vendor',
+    webglRenderer: 'WebGL Renderer',
+    userAgent: 'User Agent',
+    languages: 'Languages (comma separated)',
+    customHint:
+      'Leave Vendor/Renderer/UA empty to reuse the last selected preset. Canvas, audio and font seeds are always randomized.',
+    editFingerprintTitle: (name: string) => `Fingerprint - ${name}`,
+    storedSeeds: (c: string | number, a: string | number, f: string | number) =>
+      `Stored seeds: canvas ${c} | audio ${a} | font ${f}`,
+    runningWarning:
+      'This profile is running. Stop it before changing the fingerprint.',
+    reroll: 'Reroll',
+    rerollConfirm:
+      'Reroll the fingerprint? Every field will be replaced with a new device identity.',
+    fingerprintSaved: (name: string) => `Fingerprint for '${name}' saved.`,
+    fingerprintRerolled: (name: string) => `Fingerprint for '${name}' rerolled and saved.`,
   },
 
   trash: {

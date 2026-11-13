@@ -21,3 +21,4 @@ export function getTranslations(): Translations {
 
 export const t = getTranslations();
 export { en, id };
+

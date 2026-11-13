@@ -47,3 +47,4 @@ export function ExtensionsView() {
     </div>
   );
 }
+

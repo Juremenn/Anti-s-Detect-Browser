@@ -81,3 +81,4 @@ export function Tabs<T extends string = string>({ tabs, activeTab, onChange }: T
     </div>
   );
 }
+

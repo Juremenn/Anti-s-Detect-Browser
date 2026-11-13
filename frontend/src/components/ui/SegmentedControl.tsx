@@ -80,3 +80,4 @@ export function SegmentedControl<T extends string = string>({
     </div>
   );
 }
+

@@ -5,6 +5,7 @@ import { ToastContainer } from './components/Toast';
 import { TopBar } from './components/TopBar';
 import { t } from './i18n';
 import { CreateProfileModal } from './modals/CreateProfileModal';
+import { EditFingerprintModal } from './modals/EditFingerprintModal';
 import {
   AppSettings,
   CreateProfilePayload,
@@ -38,6 +39,7 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalPresetIdx, setCreateModalPresetIdx] = useState(0);
+  const [editFpName, setEditFpName] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState('all');
@@ -231,6 +233,11 @@ export default function App() {
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
     }
+  }
+
+  function handleFingerprintSaved(name: string) {
+    addToast(t.modal.fingerprintSaved(name), 'success');
+    loadProfiles();
   }
 
   async function handleExportProfile(name: string) {
@@ -455,9 +462,7 @@ export default function App() {
               onDeselectAll={() => setSelectedProfiles(new Set())}
               onStartProfile={handleStartProfile}
               onStopProfile={handleStopProfile}
-              onEditProfile={(name) => {
-                addToast(`Edit profile '${name}' will open full dialog in Phase 2`, 'info');
-              }}
+              onEditProfile={(name) => setEditFpName(name)}
               onOpenFolder={handleOpenFolder}
               onTrashProfile={handleTrashProfile}
               onDuplicateProfile={handleDuplicateProfile}
@@ -518,6 +523,13 @@ export default function App() {
         onSubmit={handleCreateProfileSubmit}
         presets={presets}
         defaultPresetIdx={createModalPresetIdx}
+      />
+
+      <EditFingerprintModal
+        isOpen={editFpName !== null}
+        profile={profiles.find((p) => p.name === editFpName) || null}
+        onClose={() => setEditFpName(null)}
+        onSaved={handleFingerprintSaved}
       />
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
