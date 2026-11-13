@@ -91,3 +91,4 @@ export function formatProxy(proxyStr?: string | null): {
     return { isDirect: false, hostPort: withoutAuth, protocol: 'PROXY' };
   }
 }
+

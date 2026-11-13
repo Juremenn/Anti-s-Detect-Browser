@@ -10,15 +10,17 @@ interface SettingsViewProps {
 }
 
 export function SettingsView({ settings, onSave }: SettingsViewProps) {
-  const [browserPath, setBrowserPath] = useState('');
-  const [startUrl, setStartUrl] = useState('');
-  const [maskWebRTC, setMaskWebRTC] = useState(true);
+  const [browserPath, setBrowserPath] = useState(settings?.browser_path || '');
+  const [startUrl, setStartUrl] = useState(settings?.start_url || 'https://browserleaks.com/canvas');
+  const [maskWebRTC, setMaskWebRTC] = useState(settings?.mask_webrtc ?? true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setBrowserPath(settings.browser_path || '');
-    setStartUrl(settings.start_url || 'https://browserleaks.com/canvas');
-    setMaskWebRTC(settings.mask_webrtc ?? true);
+    if (settings) {
+      setBrowserPath(settings.browser_path || '');
+      setStartUrl(settings.start_url || 'https://browserleaks.com/canvas');
+      setMaskWebRTC(settings.mask_webrtc ?? true);
+    }
   }, [settings]);
 
   async function handleSave(e: React.FormEvent) {
@@ -102,12 +104,16 @@ export function SettingsView({ settings, onSave }: SettingsViewProps) {
                 onChange={(e) => setBrowserPath(e.target.value)}
                 style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11.5 }}
               >
-                <option value="">(Auto-Detect: {settings.active_browser_path})</option>
-                {settings.browsers.map((b, i) => (
-                  <option key={i} value={b} style={{ backgroundColor: 'var(--bg-surface)' }}>
-                    {b}
-                  </option>
-                ))}
+                <option value="">(Auto-Detect: {settings.active_browser_path || 'None'})</option>
+                {settings.browsers.map((b, i) => {
+                  const bPath = typeof b === 'string' ? b : b.path;
+                  const bName = typeof b === 'string' ? b : `${b.name} (${b.path})`;
+                  return (
+                    <option key={i} value={bPath} style={{ backgroundColor: 'var(--bg-surface)' }}>
+                      {bName}
+                    </option>
+                  );
+                })}
               </select>
             )}
 

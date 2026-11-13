@@ -45,12 +45,17 @@ export interface Preset {
   screen: [number, number];
 }
 
+export interface BrowserItem {
+  name: string;
+  path: string;
+}
+
 export interface AppSettings {
   browser_path: string;
   start_url: string;
   mask_webrtc: boolean;
   active_browser_path?: string;
-  browsers?: string[];
+  browsers?: Array<string | BrowserItem>;
 }
 
 export interface CreateProfilePayload {
