@@ -21,7 +21,11 @@ Framework ini mengadopsi dan mereplikasi **seluruh 5 teknik inti pemalsuan finge
 
 ```text
 Octo-Browser/
+├── Buka_Dashboard_UI.bat         # 1-Klik Buka Dashboard Desktop GUI (Rekomendasi Utama)
+├── gui_app.py                    # Aplikasi Desktop GUI Python (Native Dark Mode)
 ├── run_stealth.py                # CLI utama untuk mengelola & meluncurkan browser
+├── Jalankan_Stealth_Browser.bat  # 1-Klik Buka Profil Bawaan
+├── Menu_Profil.bat               # Menu Konsol Cepat
 ├── README_STEALTH.md             # Panduan lengkap dokumentasi ini
 ├── stealth_browser/
 │   ├── __init__.py
@@ -36,7 +40,21 @@ Octo-Browser/
 
 ---
 
-## 3. Cara Penggunaan (Quick Start)
+## 3. Cara Penggunaan (Paling Mudah via GUI)
+
+Cukup dobel-klik file:
+**`Buka_Dashboard_UI.bat`**
+
+Antarmuka desktop modern (Dark Theme) akan langsung terbuka tanpa terminal. Dari dashboard ini Anda dapat:
+* Melihat semua profil identitas beserta statusnya (*Siap / Aktif*).
+* Menekan **"+ Buat Profil Baru"** untuk memilih preset hardware (NVIDIA RTX 3070, RTX 4080, Intel Iris, Apple M2) dan proxy.
+* Menekan **"▶ Buka Browser Terpilih"** untuk langsung meluncurkan browser anti-detect.
+* Menekan **"Uji Fingerprint"** untuk memeriksa skor anonimitas di BrowserLeaks / CreepJS.
+* Menekan **"⏹ Hentikan Browser"** atau **"📁 Buka Folder Data"**.
+
+---
+
+## 4. Cara Penggunaan Alternatif (CLI / Terminal)
 
 ### A. Melihat Daftar Profil
 ```bash
@@ -123,3 +141,4 @@ asyncio.run(run_stealth_automation())
 | **Dukungan Proxy** | HTTP / SOCKS5 / SSH | **HTTP / SOCKS5 bawaan Chrome** |
 | **Canvas & WebGL Spoof** | Modifikasi Core Chromium | **Dual-layer CDP + Manifest V3 Injeksi** |
 | **Keamanan Privasi** | Metadata disimpan di server Octo | **Data tersimpan 100% di PC Anda** |
+
