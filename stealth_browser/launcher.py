@@ -1,39 +1,95 @@
 """
-launcher.py - Spawns Chrome with anti-detect flags and injects stealth scripts.
-Uses both Chrome Extension (world: MAIN) and CDP Page.addScriptToEvaluateOnNewDocument.
+launcher.py - Spawns Chromium-based browsers with anti-detect flags and injects stealth scripts.
+Supports pure Chromium, Brave, Chrome, and Edge with automatic engine discovery.
 """
 
 import os
 import sys
 import json
-import shutil
+import glob
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from .profile_manager import ProfileManager
 from .stealth_hooks import generate_stealth_script
 
-CHROME_CANDIDATE_PATHS = [
+# Common candidate paths for Chromium-based browser engines on Windows
+BROWSER_CANDIDATE_PATTERNS = [
+    # 1. Clean Playwright / Puppeteer Chromium
+    os.path.expandvars(r"%LOCALAPPDATA%\ms-playwright\chromium-*\chrome-win\chrome.exe"),
+    os.path.expandvars(r"%LOCALAPPDATA%\ms-playwright\chromium-*\chrome-win64\chrome.exe"),
+    # 2. Brave Browser
+    r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+    r"C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe"),
+    # 3. Google Chrome
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
     os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+    # 4. Microsoft Edge & EdgeCore
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"),
+    r"C:\Program Files (x86)\Microsoft\EdgeCore\*\msedge.exe",
+    r"C:\Program Files\Microsoft\EdgeCore\*\msedge.exe",
 ]
 
 
+def discover_available_browsers() -> List[dict]:
+    """
+    Search and return all installed Chromium engines on the system.
+    """
+    found = []
+    seen = set()
+
+    for pattern in BROWSER_CANDIDATE_PATTERNS:
+        matches = glob.glob(pattern)
+        for match in matches:
+            norm = os.path.normpath(match)
+            if norm not in seen and os.path.exists(norm):
+                seen.add(norm)
+                # Classify browser name
+                lower = norm.lower()
+                if "ms-playwright" in lower or "chromium" in lower:
+                    name = "Chromium (Pure Engine)"
+                elif "brave" in lower:
+                    name = "Brave Browser"
+                elif "chrome" in lower:
+                    name = "Google Chrome"
+                elif "edge" in lower:
+                    name = "Microsoft Edge"
+                else:
+                    name = "Chromium Compatible"
+
+                found.append({"name": name, "path": norm})
+
+    return found
+
+
 def find_chrome_executable() -> str:
-    """Locate Chrome on the system."""
-    for path in CHROME_CANDIDATE_PATHS:
-        if os.path.exists(path):
-            return path
-    raise FileNotFoundError("Google Chrome executable not found in default installation directories.")
+    """
+    Locate the best available Chromium executable on the system.
+    """
+    browsers = discover_available_browsers()
+    if browsers:
+        return browsers[0]["path"]
+    raise FileNotFoundError(
+        "Tidak ditemukan browser berbasis Chromium (Google Chrome, Brave, atau Chromium) di sistem."
+    )
 
 
 class StealthLauncher:
-    def __init__(self, profiles_dir: Optional[Path] = None):
+    def __init__(self, browser_path: Optional[str] = None, profiles_dir: Optional[Path] = None):
         self.profile_mgr = ProfileManager(profiles_dir) if profiles_dir else ProfileManager()
-        self.chrome_path = find_chrome_executable()
+        if browser_path and os.path.exists(browser_path):
+            self.chrome_path = browser_path
+        else:
+            try:
+                self.chrome_path = find_chrome_executable()
+            except FileNotFoundError:
+                self.chrome_path = ""
 
     def prepare_extension(self, profile: dict) -> Path:
         """
@@ -77,8 +133,11 @@ class StealthLauncher:
         headless: bool = False
     ) -> subprocess.Popen:
         """
-        Launch Chrome with the stealth profile.
+        Launch Chromium browser with the stealth profile.
         """
+        if not self.chrome_path or not os.path.exists(self.chrome_path):
+            raise FileNotFoundError("Path browser Chromium belum disetel atau tidak valid.")
+
         profile = self.profile_mgr.get_profile(profile_name)
         ext_path = self.prepare_extension(profile)
         user_data_dir = profile["user_data_dir"]
@@ -107,6 +166,7 @@ class StealthLauncher:
 
         print("=" * 65)
         print(f"[*] Launching Stealth Browser Profile: '{profile['name']}'")
+        print(f"[*] Engine:             {self.chrome_path}")
         print(f"[*] Hardware Emulation: {profile['webgl_renderer']}")
         print(f"[*] Canvas Noise Seed:  {profile['canvas_seed']}")
         print(f"[*] Audio Noise Seed:   {profile['audio_seed']}")
@@ -123,7 +183,7 @@ async def attach_cdp_hooks(port: int, stealth_js: str):
     Connect to Chrome CDP and register Page.addScriptToEvaluateOnNewDocument.
     """
     import aiohttp
-    await asyncio.sleep(1.5) # Wait for Chrome to bind port
+    await asyncio.sleep(1.5)
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -137,15 +197,12 @@ async def attach_cdp_hooks(port: int, stealth_js: str):
                 return
 
             async with session.ws_connect(ws_url) as ws:
-                # Enable Page domain
                 await ws.send_json({"id": 1, "method": "Page.enable", "params": {}})
-                # Register script to evaluate on new document
                 await ws.send_json({
                     "id": 2,
                     "method": "Page.addScriptToEvaluateOnNewDocument",
                     "params": {"source": stealth_js}
                 })
                 print("[*] CDP Hook: Page.addScriptToEvaluateOnNewDocument successfully registered.")
-    except Exception as e:
-        # If CDP connection fails (e.g. Chrome opened already), Extension layer still active
+    except Exception:
         pass

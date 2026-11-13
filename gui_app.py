@@ -9,12 +9,12 @@ import os
 import sys
 import subprocess
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from stealth_browser.profile_manager import ProfileManager, HARDWARE_PRESETS
-from stealth_browser.launcher import StealthLauncher, find_chrome_executable
+from stealth_browser.launcher import StealthLauncher, discover_available_browsers
 
 
 class ModernTheme:
@@ -37,12 +37,15 @@ class StealthBrowserGUI:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Octo Stealth Anti-Detect Manager v1.0 (Offline Edition)")
-        self.root.geometry("980x620")
-        self.root.minsize(850, 500)
+        self.root.geometry("1020x640")
+        self.root.minsize(880, 520)
         self.root.configure(bg=ModernTheme.BG_DARK)
 
         self.profile_mgr = ProfileManager()
-        self.launcher = StealthLauncher()
+        self.available_browsers: List[dict] = discover_available_browsers()
+        
+        default_browser_path = self.available_browsers[0]["path"] if self.available_browsers else ""
+        self.launcher = StealthLauncher(browser_path=default_browser_path)
         self.active_processes: Dict[str, subprocess.Popen] = {}
 
         self._setup_styles()
@@ -107,14 +110,44 @@ class StealthBrowserGUI:
         )
         badge_lbl.pack(side=tk.LEFT, padx=12)
 
-        self.stats_lbl = tk.Label(
-            header_frame,
-            text="Total Profil: 0 | Aktif: 0",
-            font=(ModernTheme.FONT_FAMILY, 10),
+        # Engine selector in header
+        engine_frame = tk.Frame(header_frame, bg=ModernTheme.PANEL_BG)
+        engine_frame.pack(side=tk.RIGHT)
+
+        tk.Label(
+            engine_frame,
+            text="Browser Engine:",
+            font=(ModernTheme.FONT_FAMILY, 9),
             bg=ModernTheme.PANEL_BG,
             fg=ModernTheme.TEXT_MUTED
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        browser_labels = [f"{b['name']}" for b in self.available_browsers] if self.available_browsers else ["(Tidak ada browser)"]
+        self.browser_combo = ttk.Combobox(
+            engine_frame,
+            values=browser_labels,
+            state="readonly",
+            width=24,
+            font=(ModernTheme.FONT_FAMILY, 9)
         )
-        self.stats_lbl.pack(side=tk.RIGHT)
+        if self.available_browsers:
+            self.browser_combo.current(0)
+        self.browser_combo.pack(side=tk.LEFT)
+        self.browser_combo.bind("<<ComboboxSelected>>", self._on_browser_changed)
+
+        btn_browse = tk.Button(
+            engine_frame,
+            text="Pilih...",
+            font=(ModernTheme.FONT_FAMILY, 8),
+            bg=ModernTheme.CARD_BG,
+            fg=ModernTheme.TEXT_MAIN,
+            relief="flat",
+            padx=6,
+            pady=2,
+            cursor="hand2",
+            command=self._browse_custom_browser
+        )
+        btn_browse.pack(side=tk.LEFT, padx=(6, 0))
 
         # 2. TOOLBAR ACTION BUTTONS
         toolbar_frame = tk.Frame(self.root, bg=ModernTheme.BG_DARK, padx=20, pady=12)
@@ -171,9 +204,9 @@ class StealthBrowserGUI:
             fg=ModernTheme.TEXT_MAIN,
             insertbackground=ModernTheme.TEXT_MAIN,
             relief="flat",
-            width=32
+            width=30
         )
-        url_entry.pack(side=tk.LEFT, padx=(0, 10), ipady=4)
+        url_entry.pack(side=tk.LEFT, padx=(0, 8), ipady=4)
 
         btn_test = tk.Button(
             toolbar_frame,
@@ -189,6 +222,15 @@ class StealthBrowserGUI:
         )
         btn_test.pack(side=tk.LEFT)
 
+        self.stats_lbl = tk.Label(
+            toolbar_frame,
+            text="Total Profil: 0 | Aktif: 0",
+            font=(ModernTheme.FONT_FAMILY, 9),
+            bg=ModernTheme.BG_DARK,
+            fg=ModernTheme.TEXT_MUTED
+        )
+        self.stats_lbl.pack(side=tk.RIGHT)
+
         # 3. PROFILES TABLE (TREEVIEW)
         table_container = tk.Frame(self.root, bg=ModernTheme.BG_DARK, padx=20, pady=5)
         table_container.pack(fill=tk.BOTH, expand=True)
@@ -203,7 +245,7 @@ class StealthBrowserGUI:
         self.tree.heading("status", text="Status", anchor=tk.CENTER)
 
         self.tree.column("name", width=180, anchor=tk.W)
-        self.tree.column("hardware", width=340, anchor=tk.W)
+        self.tree.column("hardware", width=360, anchor=tk.W)
         self.tree.column("canvas_seed", width=110, anchor=tk.CENTER)
         self.tree.column("proxy", width=160, anchor=tk.W)
         self.tree.column("status", width=120, anchor=tk.CENTER)
@@ -215,7 +257,6 @@ class StealthBrowserGUI:
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Double click to launch
         self.tree.bind("<Double-1>", lambda event: self._launch_selected_profile())
 
         # 4. BOTTOM ACTION CONTROL BAR
@@ -282,6 +323,24 @@ class StealthBrowserGUI:
         )
         btn_delete.pack(side=tk.RIGHT)
 
+    def _on_browser_changed(self, event=None):
+        idx = self.browser_combo.current()
+        if 0 <= idx < len(self.available_browsers):
+            chosen = self.available_browsers[idx]["path"]
+            self.launcher.chrome_path = chosen
+
+    def _browse_custom_browser(self):
+        file_path = filedialog.askopenfilename(
+            title="Pilih Executable Browser Chromium",
+            filetypes=[("Executable Files", "*.exe"), ("All Files", "*.*")]
+        )
+        if file_path and os.path.exists(file_path):
+            self.available_browsers.append({"name": "Custom: " + os.path.basename(file_path), "path": file_path})
+            labels = [b["name"] for b in self.available_browsers]
+            self.browser_combo.config(values=labels)
+            self.browser_combo.current(len(labels) - 1)
+            self.launcher.chrome_path = file_path
+
     def _refresh_profile_list(self):
         """Reload profiles from disk and populate treeview."""
         for item in self.tree.get_children():
@@ -300,7 +359,6 @@ class StealthBrowserGUI:
                 status = "○ Siap"
 
             renderer = p.get("webgl_renderer", "Default")
-            # Shorten renderer display text for readability
             if "RTX 3070" in renderer:
                 hw_display = "Windows 10 | NVIDIA RTX 3070"
             elif "RTX 4080" in renderer:
@@ -329,6 +387,13 @@ class StealthBrowserGUI:
     def _launch_selected_profile(self):
         profile_name = self._get_selected_profile_name()
         if not profile_name:
+            return
+
+        if not self.launcher.chrome_path or not os.path.exists(self.launcher.chrome_path):
+            messagebox.showerror(
+                "Browser Tidak Ditemukan",
+                "Browser Chromium belum dipilih. Silakan klik 'Pilih...' di pojok kanan atas untuk memilih chrome.exe, brave.exe, atau msedge.exe."
+            )
             return
 
         if profile_name in self.active_processes and self.active_processes[profile_name].poll() is None:
@@ -411,7 +476,6 @@ class StealthBrowserGUI:
         dlg.transient(self.root)
         dlg.grab_set()
 
-        # Center dialog
         dlg.update_idletasks()
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 240
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 190
