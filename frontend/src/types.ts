@@ -1,4 +1,6 @@
 export type TabId = 'profiles' | 'proxies' | 'templates' | 'extensions' | 'trash' | 'settings';
+export type ThemeMode = 'dark' | 'light' | 'system';
+export type ResolvedTheme = 'dark' | 'light';
 
 export interface Profile {
   name: string;
