@@ -1,4 +1,4 @@
-﻿import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, EyeOff, RefreshCw, Shuffle } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { ChipInput } from '../components/ui/ChipInput';
@@ -356,9 +356,22 @@ export function ProfileEditDialog({
     setFpDirty(false);
   }
 
-  // Reset on open.
+  // Guard against re-initializing on background polling updates
+  const activeEditIdRef = useRef<string | null>(null);
+
+  // Reset on open or when switched to a different profile
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      activeEditIdRef.current = null;
+      return;
+    }
+
+    const currentId = editProfile ? editProfile.name : '__NEW__';
+    if (activeEditIdRef.current === currentId) {
+      return;
+    }
+    activeEditIdRef.current = currentId;
+
     setTab('general');
     setError('');
     setSaving(false);
@@ -443,8 +456,7 @@ export function ProfileEditDialog({
       setResolvedIdx(idx);
       setPresetVal('random');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, editProfile]);
+  }, [isOpen, editProfile?.name]);
 
   function handlePresetChange(value: string) {
     setPresetVal(value);
@@ -471,18 +483,51 @@ export function ProfileEditDialog({
     }
   }
 
-  // Debounced consistency validation.
-  const formJson = JSON.stringify(form);
+  // Debounced consistency validation only when fingerprint-relevant fields change
+  const validationKey = useMemo(() => {
+    return JSON.stringify([
+      form.os,
+      form.platform,
+      form.renderer,
+      form.userAgent,
+      form.cores,
+      form.memory,
+      form.width,
+      form.height,
+      form.dpr,
+      form.colorDepth,
+      form.languages,
+      form.tzMode,
+      form.timezone,
+      proxyCountry,
+    ]);
+  }, [
+    form.os,
+    form.platform,
+    form.renderer,
+    form.userAgent,
+    form.cores,
+    form.memory,
+    form.width,
+    form.height,
+    form.dpr,
+    form.colorDepth,
+    form.languages,
+    form.tzMode,
+    form.timezone,
+    proxyCountry,
+  ]);
+
   useEffect(() => {
     if (!isOpen) return;
     const timer = setTimeout(() => {
       api.validateProfile(validationFields(form), proxyCountry)
         .then((res) => setValidation(res))
         .catch(() => setValidation(null));
-    }, 400);
+    }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, formJson, proxyCountry]);
+  }, [isOpen, validationKey]);
 
   const nameError = useMemo(() => {
     const clean = form.name.trim();
@@ -508,7 +553,7 @@ export function ProfileEditDialog({
     if (form.proxySource === 'saved') {
       const p = proxies.find((x) => x.id === form.savedProxyId);
       if (!p) return null;
-      return { url: p.url, label: `${p.host || p.url}${p.country ? ` Â· ${p.country}` : ''}` };
+      return { url: p.url, label: `${p.host || p.url}${p.country ? ` · ${p.country}` : ''}` };
     }
     if (!form.newHost || !form.newPort) return null;
     return { url: buildProxyUrl(form), label: `${form.newHost}:${form.newPort}` };
@@ -563,7 +608,7 @@ export function ProfileEditDialog({
     try {
       await api.addProxy(form.newHost, buildProxyUrl(form));
       setSavedToList(true);
-      onToast(`${form.newHost}:${form.newPort} â†’ ${t.modal.saveToList}`, 'success');
+      onToast(`${form.newHost}:${form.newPort} -> ${t.modal.saveToList}`, 'success');
     } catch (e: unknown) {
       onToast(e instanceof Error ? e.message : String(e), 'error');
     }
@@ -894,7 +939,7 @@ export function ProfileEditDialog({
                   <option value="random">{t.modal.presetRandom}</option>
                   {osPresets.map(({ p, idx }) => (
                     <option key={idx} value={String(idx)}>
-                      {p.label || `${p.name || p.webgl_renderer || 'Standard'} Â· ${presetNum(p)}C/${presetMem(p)}GB Â· ${presetScreen(p)[0]}Ã—${presetScreen(p)[1]}`}
+                      {p.label || `${p.name || p.webgl_renderer || 'Standard'} · ${presetNum(p)}C/${presetMem(p)}GB · ${presetScreen(p)[0]}x${presetScreen(p)[1]}`}
                     </option>
                   ))}
                   <option value="custom">{t.modal.customOption}</option>
@@ -1237,10 +1282,10 @@ export function ProfileEditDialog({
                         setProxyCountry(p?.country || null);
                       }}
                     >
-                      <option value="">â€”</option>
+                      <option value="">-</option>
                       {proxies.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.title || p.url}{p.country ? ` Â· ${p.country}` : ''}
+                          {p.title || p.url}{p.country ? ` · ${p.country}` : ''}
                         </option>
                       ))}
                     </Select>
@@ -1414,13 +1459,13 @@ export function ProfileEditDialog({
             t.modal.summaryBrowser,
             engineVersion ? `Chrome ${engineVersion.split('.')[0]}` : 'Chrome',
           )}
-          {section(t.modal.summaryGpu, form.renderer || 'â€”')}
+          {section(t.modal.summaryGpu, form.renderer || '-')}
           {section(t.modal.summaryCpu, `${form.cores || '?'}C / ${form.memory || '?'}GB`)}
-          {section(t.modal.summaryScreen, `${form.width || '?'}Ã—${form.height || '?'} @${form.dpr}x`)}
+          {section(t.modal.summaryScreen, `${form.width || '?'}x${form.height || '?'} @${form.dpr}x`)}
           {section(
             t.modal.summaryTimezone,
             form.tzMode === 'manual'
-              ? form.timezone || 'â€”'
+              ? form.timezone || '-'
               : form.tzMode === 'system'
                 ? t.modal.tzModeSystem
                 : t.modal.tzModeProxy,
@@ -1434,7 +1479,7 @@ export function ProfileEditDialog({
           {section(
             t.modal.summaryProxy,
             summaryProxy
-              ? `${summaryProxy.label}${proxyCountry ? ` Â· ${proxyCountry}` : ''}`
+              ? `${summaryProxy.label}${proxyCountry ? ` · ${proxyCountry}` : ''}`
               : t.modal.summaryDirect,
           )}
 
@@ -1444,7 +1489,7 @@ export function ProfileEditDialog({
                 {t.modal.consistencyScore}
               </span>
               <span style={{ fontSize: 18, fontWeight: 600, color: scoreColor }}>
-                {score == null ? 'â€”' : score}
+                {score == null ? '-' : score}
               </span>
             </div>
 

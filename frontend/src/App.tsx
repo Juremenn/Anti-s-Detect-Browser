@@ -60,20 +60,41 @@ export default function App() {
     setToasts((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
-  // Fetch data
+  // Fetch data with referential equality guards to avoid unnecessary re-renders
   const loadProfiles = useCallback(async () => {
     try {
       const data = await api.getProfiles();
-      setProfiles(data.profiles || []);
+      const incoming = data.profiles || [];
+      setProfiles((prev) => {
+        if (
+          prev.length === incoming.length &&
+          prev.every((p, i) => {
+            const o = incoming[i];
+            return (
+              o &&
+              p.name === o.name &&
+              p.is_active === o.is_active &&
+              p.pid === o.pid &&
+              p.canvas_seed === o.canvas_seed &&
+              p.proxy === o.proxy &&
+              p.folder === o.folder
+            );
+          })
+        ) {
+          return prev;
+        }
+        return incoming;
+      });
+
       if (data.active_engine) setActiveEngine(data.active_engine);
 
-      const existing = new Set(data.profiles.map((p) => p.name));
+      const existing = new Set(incoming.map((p) => p.name));
       setSelectedProfiles((prev) => {
         const next = new Set<string>();
         for (const name of prev) {
           if (existing.has(name)) next.add(name);
         }
-        return next;
+        return next.size === prev.size ? prev : next;
       });
     } catch (e) {
       console.error('Failed to load profiles:', e);
@@ -83,7 +104,19 @@ export default function App() {
   const loadTrash = useCallback(async () => {
     try {
       const data = await api.getTrash();
-      setTrashItems(data.items || []);
+      const incoming = data.items || [];
+      setTrashItems((prev) => {
+        if (
+          prev.length === incoming.length &&
+          prev.every((item, i) => {
+            const o = incoming[i];
+            return o && item.trash_id === o.trash_id;
+          })
+        ) {
+          return prev;
+        }
+        return incoming;
+      });
     } catch (e) {
       console.error('Failed to load trash:', e);
     }
@@ -124,17 +157,20 @@ export default function App() {
     loadSettings();
   }, [loadProfiles, loadTrash, loadProxies, loadPresets, loadSettings]);
 
-  // Polling every 2s
+  // Polling every 3s, paused when modal is open to ensure zero interaction lag
   useEffect(() => {
+    const isModalOpen = createModalOpen || !!editFpName;
+    if (isModalOpen) return;
+
     const timer = setInterval(() => {
       if (activeTab === 'profiles') {
         loadProfiles();
       } else if (activeTab === 'trash') {
         loadTrash();
       }
-    }, 2000);
+    }, 3000);
     return () => clearInterval(timer);
-  }, [activeTab, loadProfiles, loadTrash]);
+  }, [activeTab, loadProfiles, loadTrash, createModalOpen, editFpName]);
 
   // Global Ctrl+N
   useEffect(() => {

@@ -23,7 +23,13 @@ def test_api():
     conn = HTTPConnection("127.0.0.1", PORT, timeout=10)
 
     try:
-        # 1. GET /api/profiles
+        # 1. Ensure test profile exists
+        mgr = ProfileManager()
+        test_prof = "Api_Test_Run_Profile"
+        if not mgr.exists(test_prof):
+            mgr.create_profile(test_prof, preset_index=0)
+
+        # GET /api/profiles
         conn.request("GET", "/api/profiles", headers={"Origin": f"http://127.0.0.1:{PORT}"})
         res = conn.getresponse()
         assert res.status == 200
@@ -31,10 +37,10 @@ def test_api():
         profiles = data.get("profiles", [])
         names = [p["name"] for p in profiles]
         print("1. Profiles API returned:", names)
-        assert "Profile_118" in names, "Profile_118 should be listed"
+        assert test_prof in names, f"{test_prof} should be listed"
 
         # 2. POST /api/profiles/start
-        payload = json.dumps({"name": "Profile_118"}).encode()
+        payload = json.dumps({"name": test_prof}).encode()
         conn.request("POST", "/api/profiles/start", body=payload, headers={
             "Origin": f"http://127.0.0.1:{PORT}",
             "Content-Type": "application/json"
@@ -48,7 +54,7 @@ def test_api():
         time.sleep(2)
 
         # 3. POST /api/profiles/stop
-        payload = json.dumps({"name": "Profile_118"}).encode()
+        payload = json.dumps({"name": test_prof}).encode()
         conn.request("POST", "/api/profiles/stop", body=payload, headers={
             "Origin": f"http://127.0.0.1:{PORT}",
             "Content-Type": "application/json"
@@ -96,7 +102,9 @@ def test_api():
         assert res.status == 200
         assert temp_name in body.get("trashed", [])
 
-        # Clean trash via profile manager
+        # Clean test profiles
+        if mgr.exists(test_prof):
+            mgr.delete_profile(test_prof)
         ProfileManager().purge_trash()
 
         print("\nALL SERVER API TESTS PASSED!")
