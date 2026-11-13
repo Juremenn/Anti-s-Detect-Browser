@@ -10,6 +10,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 BASE_PROFILES_DIR = Path(__file__).resolve().parent.parent / "profiles"
 TRASH_DIRNAME = ".trash"
@@ -18,7 +19,85 @@ TRASH_DIRNAME = ".trash"
 # escape the profiles directory (delete uses rmtree on this path).
 NAME_RE = re.compile(r"^[A-Za-z0-9_\- ]{1,64}$")
 
-EDITABLE_FIELDS = {"tags", "folder", "notes", "proxy"}
+def _clean_typed_fields(fields: dict) -> dict:
+    """Clean/validate the extended per-profile settings (dialog Advanced,
+    Fingerprint behavior, Proxy, General extras). Unknown keys are ignored."""
+    out: dict = {}
+
+    if "tags" in fields:
+        out["tags"] = _clean_tags(fields["tags"])
+    for key in ("folder", "notes", "proxy"):
+        if key in fields:
+            value = fields[key]
+            out[key] = ("" if value is None else str(value)).strip()[:500 if key == "notes" else 200]
+    if "proxy" in out:
+        out["proxy"] = validate_proxy(out["proxy"])
+
+    if "color" in fields:
+        color = str(fields["color"] or "").strip().lower()
+        out["color"] = color if re.match(r"^#[0-9a-f]{6}$", color) or color in (
+            "", "gray", "blue", "green", "yellow", "red", "purple", "orange") else ""
+
+    if "start_urls" in fields:
+        urls = fields["start_urls"]
+        if isinstance(urls, str):
+            urls = [u.strip() for u in urls.splitlines() if u.strip()]
+        clean = []
+        for u in urls if isinstance(urls, list) else []:
+            u = str(u).strip()[:500]
+            if u and urlparse(u).scheme in ("http", "https"):
+                clean.append(u)
+        out["start_urls"] = clean[:20]
+
+    for key in ("webrtc_mode", "timezone_mode", "locale_mode", "geo_mode", "on_close"):
+        if key in fields:
+            value = str(fields[key] or "").strip().lower()
+            allowed = {
+                "webrtc_mode": ("disabled", "altered", "real"),
+                "timezone_mode": ("proxy", "manual", "system"),
+                "locale_mode": ("proxy", "manual"),
+                "geo_mode": ("block", "proxy", "manual"),
+                "on_close": ("keep", "clear_cache", "clear_all"),
+            }[key]
+            out[key] = value if value in allowed else allowed[0] if key != "locale_mode" else "proxy"
+
+    if "timezone" in fields:
+        out["timezone"] = str(fields["timezone"] or "").strip()[:64]
+    if "locale" in fields:
+        out["locale"] = str(fields["locale"] or "").strip()[:16]
+    if "browser_version" in fields:
+        out["browser_version"] = str(fields["browser_version"] or "").strip()[:32]
+
+    if "geo_mode" in fields and fields.get("geo_mode") == "manual":
+        for key in ("geo_lat", "geo_lon", "geo_accuracy"):
+            if key in fields:
+                try:
+                    out[key] = max(-90.0 if key.endswith("lat") else 0.0,
+                                   min(90.0 if key.endswith("lat") else 100000.0,
+                                       float(fields[key])))
+                except (TypeError, ValueError):
+                    pass
+
+    if "extra_args" in fields:
+        args = str(fields["extra_args"] or "").strip()[:1000]
+        dangerous = ("--user-data-dir", "--load-extension", "--remote-debugging",
+                     "--proxy-server", "--user-agent")
+        if any(d in args for d in dangerous):
+            raise ProfileError(
+                "Argumen tambahan tidak boleh memuat: " + ", ".join(dangerous))
+        out["extra_args"] = args
+
+    for key in ("canvas_noise", "webgl_noise", "audio_noise", "clientrects_noise", "dnt"):
+        if key in fields:
+            out[key] = bool(fields[key])
+    for key in ("media_mic", "media_cam", "media_spk"):
+        if key in fields:
+            try:
+                out[key] = max(0, min(4, int(fields[key])))
+            except (TypeError, ValueError):
+                pass
+
+    return out
 
 HARDWARE_PRESETS = [
     {
@@ -285,19 +364,6 @@ def validate_proxy(proxy: str) -> str:
     return proxy
 
 
-def _clean_fields(fields: dict) -> dict:
-    out = {}
-    for key in EDITABLE_FIELDS & set(fields):
-        value = fields[key]
-        if key == "tags":
-            out[key] = _clean_tags(value)
-        else:
-            out[key] = ("" if value is None else str(value)).strip()[:500 if key == "notes" else 200]
-    if "proxy" in out:
-        out["proxy"] = validate_proxy(out["proxy"])
-    return out
-
-
 def _validate_custom_fingerprint(fields: dict) -> dict:
     """Validate user-entered fingerprint values. Only provided keys are returned."""
     if not isinstance(fields, dict):
@@ -419,7 +485,8 @@ class ProfileManager:
 
     def create_profile(self, name: str, preset_index: int = 0, proxy: Optional[str] = None,
                        tags=None, folder: str = "", notes: str = "",
-                       diversify: bool = True, custom: Optional[dict] = None) -> dict:
+                       diversify: bool = True, custom: Optional[dict] = None,
+                       extra: Optional[dict] = None) -> dict:
         name = validate_name(name)
         profile_path = self.profiles_dir / name
         if (profile_path / "config.json").exists():
@@ -448,7 +515,10 @@ class ProfileManager:
             **preset,
             **fingerprint,
             **overrides,
-            **_clean_fields({"proxy": proxy, "tags": tags or [], "folder": folder, "notes": notes}),
+            **_clean_typed_fields({
+                "proxy": proxy, "tags": tags or [], "folder": folder, "notes": notes,
+                **(extra or {}),
+            }),
         }
         _write_json(profile_path / "config.json", profile)
         return profile
@@ -464,7 +534,7 @@ class ProfileManager:
 
     def update_profile(self, name: str, fields: dict) -> dict:
         profile = self.get_profile(name, create_if_missing=False)
-        profile.update(_clean_fields(fields or {}))
+        profile.update(_clean_typed_fields(fields or {}))
         _write_json(self._path(name) / "config.json", profile)
         return profile
 
@@ -576,6 +646,55 @@ class ProfileManager:
             return True
         return False
 
+    # --- templates --------------------------------------------------------------
+
+    TEMPLATE_KEYS = (
+        "base_preset", "os", "platform", "platform_version", "webgl_vendor", "webgl_renderer",
+        "hardware_concurrency", "device_memory", "screen_width", "screen_height",
+        "color_depth", "device_pixel_ratio", "languages", "user_agent",
+        "webrtc_mode", "timezone_mode", "locale_mode", "geo_mode", "timezone", "locale",
+        "canvas_noise", "webgl_noise", "audio_noise", "clientrects_noise", "dnt",
+        "media_mic", "media_cam", "media_spk", "on_close", "start_urls", "extra_args",
+        "proxy", "folder", "tags", "notes", "color", "diversified", "custom",
+    )
+
+    def _templates_file(self) -> Path:
+        return self.profiles_dir / ".templates.json"
+
+    def list_templates(self) -> list:
+        try:
+            with open(self._templates_file(), "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, list) else []
+        except (OSError, ValueError):
+            return []
+
+    def save_template(self, name: str, profile: dict, description: str = "") -> dict:
+        name = validate_name(name)
+        entry = {
+            "id": f"tpl_{int(time.time() * 1000)}",
+            "name": name,
+            "description": str(description or "").strip()[:200],
+            "created_at": str(int(time.time())),
+            **{k: profile[k] for k in self.TEMPLATE_KEYS if k in profile},
+            # Seeds are never saved: a template must not ship a shared identity.
+            "canvas_seed": None, "audio_seed": None, "font_seed": None,
+        }
+        templates = [t for t in self.list_templates() if t.get("name") != name]
+        templates.append(entry)
+        with open(self._templates_file(), "w", encoding="utf-8") as f:
+            json.dump(templates, f, indent=2)
+        return entry
+
+    def delete_template(self, template_id: str) -> bool:
+        templates = self.list_templates()
+        filtered = [t for t in templates if t.get("id") != template_id]
+        if len(filtered) == len(templates):
+            return False
+        with open(self._templates_file(), "w", encoding="utf-8") as f:
+            json.dump(filtered, f, indent=2)
+        return True
+
     # --- import / export -------------------------------------------------------
 
     def export_profile(self, name: str) -> dict:
@@ -602,7 +721,7 @@ class ProfileManager:
             "name": name,
             "uuid": str(uuid.uuid4()),
             "created_at": str(int(time.time())),
-            **_clean_fields(data),
+            **_clean_typed_fields(data),
         })
         for seed in ("canvas_seed", "audio_seed", "font_seed"):
             if not isinstance(profile.get(seed), int):

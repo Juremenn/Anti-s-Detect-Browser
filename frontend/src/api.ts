@@ -1,11 +1,15 @@
 import {
   AppSettings,
+  ConsistencyResult,
   CreateProfilePayload,
   CustomFingerprint,
+  ParsedProxy,
   Preset,
   Profile,
   ProfilesResponse,
+  ProxyCheckResult,
   ProxyItem,
+  TemplateEntry,
   TrashItem,
 } from './types';
 
@@ -61,6 +65,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, fields }),
     }),
+  updateProfile: (name: string, fields: Record<string, unknown>) =>
+    request<{ status: string; profile: Profile }>('/api/profiles/update', {
+      method: 'POST',
+      body: JSON.stringify({ name, fields }),
+    }),
+  validateProfile: (fields: Record<string, unknown>, proxyCountry?: string | null) =>
+    request<ConsistencyResult>('/api/profiles/validate', {
+      method: 'POST',
+      body: JSON.stringify({ fields, proxy_country: proxyCountry ?? null }),
+    }),
   openFolder: (name: string) =>
     request<{ status: string }>('/api/profiles/open_folder', {
       method: 'POST',
@@ -89,6 +103,33 @@ export const api = {
     }),
   deleteProxy: (id: string) =>
     request<{ status: string }>('/api/proxies/delete', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }),
+  parseProxies: (text: string) =>
+    request<{ parsed: ParsedProxy[]; errors: Array<{ line: number; error: string }> }>(
+      '/api/proxies/parse',
+      { method: 'POST', body: JSON.stringify({ text }) },
+    ),
+  checkProxy: (url: string) =>
+    request<ProxyCheckResult>('/api/proxies/check', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
+
+  // Templates
+  getTemplates: () => request<{ templates: TemplateEntry[] }>('/api/templates'),
+  saveTemplate: (name: string, profile: string | Record<string, unknown>, description = '') =>
+    request<{ status: string; template: TemplateEntry }>('/api/templates/save', {
+      method: 'POST',
+      body: JSON.stringify(
+        typeof profile === 'string'
+          ? { name, profile, description }
+          : { name, config: profile, description },
+      ),
+    }),
+  deleteTemplate: (id: string) =>
+    request<{ status: string }>('/api/templates/delete', {
       method: 'POST',
       body: JSON.stringify({ id }),
     }),

@@ -16,8 +16,10 @@ from pathlib import Path
 from typing import Dict, List
 from urllib.parse import urlparse
 
+from stealth_browser.consistency import evaluate as evaluate_consistency
 from stealth_browser.launcher import StealthLauncher, discover_available_browsers
 from stealth_browser.profile_manager import HARDWARE_PRESETS, ProfileError, ProfileManager
+from stealth_browser import proxy_utils
 
 PORT = 58888
 ROOT = Path(__file__).resolve().parent
@@ -72,6 +74,29 @@ def save_proxies(proxies_list: list):
 
 settings = load_settings()
 launcher = StealthLauncher(browser_path=settings["browser_path"] or None)
+_engine_version_cache = {"path": None, "version": ""}
+
+
+def detect_engine_version() -> str:
+    """'131.0.6778.85' from chrome --version; cached per binary path."""
+    path = launcher.chrome_path
+    if not path:
+        return ""
+    if _engine_version_cache["path"] == path:
+        return _engine_version_cache["version"]
+    version = ""
+    try:
+        out = subprocess.run([path, "--version"], capture_output=True, text=True,
+                             timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        # "Chromium 131.0.6778.85" / "Google Chrome 131.0..." / "Microsoft Edge 131..."
+        for token in (out.stdout or "").split():
+            if token and token[0].isdigit() and "." in token:
+                version = token
+                break
+    except (OSError, subprocess.SubprocessError):
+        pass
+    _engine_version_cache.update({"path": path, "version": version})
+    return version
 
 
 def kill_tree(proc: subprocess.Popen):
@@ -168,6 +193,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/settings": self._get_settings,
             "/api/presets": lambda: self._send_json({"presets": HARDWARE_PRESETS}),
             "/api/proxies": lambda: self._send_json({"proxies": load_proxies()}),
+            "/api/templates": lambda: self._send_json({"templates": profile_mgr.list_templates()}),
+            "/api/geoip/status": lambda: self._send_json({
+                "db": (proxy_utils.find_mmdb().name if proxy_utils.find_mmdb() else None)}),
         }
         if path in routes:
             if not self._same_origin():
@@ -199,6 +227,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/settings": self._set_settings,
             "/api/proxies/add": self._add_proxy,
             "/api/proxies/delete": self._delete_proxy,
+            "/api/proxies/parse": self._parse_proxies,
+            "/api/proxies/check": self._check_proxy,
+            "/api/templates/save": self._save_template,
+            "/api/templates/delete": self._delete_template,
+            "/api/profiles/validate": self._validate_profile,
         }
         handler = routes.get(path)
         if not handler:
@@ -239,7 +272,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self._send_json({
             **settings,
             "active_browser_path": launcher.chrome_path,
+            "engine_version": detect_engine_version(),
             "browsers": discover_available_browsers(),
+            "geoip_db": (proxy_utils.find_mmdb().name if proxy_utils.find_mmdb() else None),
         })
 
     def _set_settings(self, data: dict):
@@ -286,6 +321,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             notes=data.get("notes", ""),
             diversify=bool(data.get("diversify", True)),
             custom=data.get("custom"),
+            extra=data.get("extra"),
         )
         self._send_json({"status": "created", "profile": created})
 
@@ -306,8 +342,29 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self._send_json({"status": "updated", "profile": profile})
 
     def _update(self, data: dict):
-        updated = profile_mgr.update_profile(data.get("name"), data.get("fields") or {})
+        """Split incoming fields: fingerprint keys are validated strictly and
+        refused while the profile runs; other keys are simple settings."""
+        name = data.get("name")
+        fields = dict(data.get("fields") or {})
+        fingerprint_keys = {"platform", "webgl_vendor", "webgl_renderer", "user_agent",
+                            "hardware_concurrency", "device_memory", "screen_width",
+                            "screen_height", "color_depth", "languages"}
+        fp_fields = {k: fields.pop(k) for k in list(fields) if k in fingerprint_keys}
+        if fp_fields:
+            if running(name):
+                raise ProfileError("Hentikan profil yang sedang berjalan sebelum mengubah fingerprint.")
+            profile_mgr.set_fingerprint(name, fp_fields)
+        updated = profile_mgr.update_profile(name, fields)
         self._send_json({"status": "updated", "profile": updated})
+
+    def _validate_profile(self, data: dict):
+        fields = data.get("fields") or {}
+        result = evaluate_consistency(
+            fields,
+            engine_version=detect_engine_version(),
+            proxy_country=data.get("proxy_country"),
+        )
+        self._send_json(result)
 
     def _delete(self, data: dict):
         names = data.get("names") or [data.get("name")]
@@ -366,12 +423,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         proxy_url = str(data.get("url", "")).strip()
         if not proxy_url:
             raise ProfileError("Alamat proxy wajib diisi.")
+        parsed = {}
+        try:
+            parsed = proxy_utils.parse_proxy_string(proxy_url)
+        except proxy_utils.ProxyError:
+            pass  # keep the raw string; the dialog's parse step surfaces errors
         proxies = load_proxies()
         new_entry = {
             "id": f"prx_{int(time.time() * 1000)}",
             "title": title or proxy_url,
             "url": proxy_url,
             "added_at": int(time.time()),
+            **{k: parsed[k] for k in ("type", "host", "port", "username", "password") if parsed},
+            **{k: data.get(k) for k in ("country", "latency", "status", "exit_ip") if data.get(k) is not None},
         }
         proxies.append(new_entry)
         save_proxies(proxies)
@@ -383,6 +447,48 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         filtered = [p for p in proxies if p.get("id") != proxy_id]
         save_proxies(filtered)
         self._send_json({"status": "deleted"})
+
+    def _parse_proxies(self, data: dict):
+        lines = data.get("text") or ""
+        parsed, errors = [], []
+        for i, line in enumerate(str(lines).splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                item = proxy_utils.parse_proxy_string(line)
+                item["line"] = i + 1
+                parsed.append(item)
+            except proxy_utils.ProxyError as e:
+                errors.append({"line": i + 1, "error": str(e)})
+        self._send_json({"parsed": parsed, "errors": errors})
+
+    def _check_proxy(self, data: dict):
+        raw = str(data.get("url") or "").strip()
+        if not raw:
+            raise ProfileError("Alamat proxy wajib diisi.")
+        result = proxy_utils.check_proxy(raw)
+        if result.get("ok") and result.get("ip"):
+            geo = proxy_utils.geoip_country(result["ip"])
+            result["country"] = geo["country"] or result.get("country")
+            result["geo_source"] = geo["source"]
+        self._send_json(result)
+
+    def _save_template(self, data: dict):
+        name = data.get("name")
+        source_name = data.get("profile")
+        if source_name:
+            profile = profile_mgr.get_profile(source_name, create_if_missing=False)
+        elif isinstance(data.get("config"), dict):
+            profile = data["config"]
+        else:
+            raise ProfileError("Template butuh profil sumber atau konfigurasi.")
+        entry = profile_mgr.save_template(name, profile, data.get("description", ""))
+        self._send_json({"status": "saved", "template": entry})
+
+    def _delete_template(self, data: dict):
+        deleted = profile_mgr.delete_template(data.get("id"))
+        self._send_json({"status": "deleted" if deleted else "not_found"})
 
 
 def launch_in_app_window(port: int):

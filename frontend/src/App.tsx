@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api';
 import { Sidebar } from './components/Sidebar';
 import { ToastContainer } from './components/Toast';
 import { TopBar } from './components/TopBar';
 import { t } from './i18n';
-import { CreateProfileModal } from './modals/CreateProfileModal';
-import { EditFingerprintModal } from './modals/EditFingerprintModal';
+import { ProfileEditDialog } from './modals/ProfileEditDialog';
 import {
   AppSettings,
   CreateProfilePayload,
@@ -38,7 +37,6 @@ export default function App() {
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [createModalPresetIdx, setCreateModalPresetIdx] = useState(0);
   const [editFpName, setEditFpName] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -143,7 +141,6 @@ export default function App() {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
-        setCreateModalPresetIdx(0);
         setCreateModalOpen(true);
       }
     }
@@ -161,6 +158,15 @@ export default function App() {
     }
     return Array.from(tagSet);
   }, [profiles]);
+
+  // Collect all unique folder names for the dialog combobox
+  const folders = useMemo(
+    () =>
+      Array.from(
+        new Set(profiles.map((p) => p.folder).filter((f): f is string => !!f)),
+      ),
+    [profiles],
+  );
 
   // Profile actions
   async function handleStartProfile(name: string) {
@@ -233,11 +239,6 @@ export default function App() {
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
     }
-  }
-
-  function handleFingerprintSaved(name: string) {
-    addToast(t.modal.fingerprintSaved(name), 'success');
-    loadProfiles();
   }
 
   async function handleExportProfile(name: string) {
@@ -335,6 +336,27 @@ export default function App() {
     setActiveTab('profiles');
   }
 
+  async function handleCreateProfileAndStart(payload: CreateProfilePayload) {
+    await api.createProfile(payload);
+    addToast(t.toast.profileCreated(payload.name), 'success');
+    await loadProfiles();
+    setActiveTab('profiles');
+    try {
+      await api.startProfile(payload.name);
+      addToast(t.toast.profileStarted(payload.name), 'success');
+      await loadProfiles();
+    } catch (e: unknown) {
+      addToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  async function handleUpdateProfile(name: string, fields: Record<string, unknown>) {
+    await api.updateProfile(name, fields);
+    addToast(t.modal.fingerprintSaved(name), 'success');
+    await loadProfiles();
+    setActiveTab('profiles');
+  }
+
   // Trash actions
   async function handleRestoreTrash(trashId: string) {
     try {
@@ -415,7 +437,6 @@ export default function App() {
           <>
             <TopBar
               onNewProfile={() => {
-                setCreateModalPresetIdx(0);
                 setCreateModalOpen(true);
               }}
               onQuickProfile={handleQuickProfile}
@@ -470,7 +491,6 @@ export default function App() {
               onExportProfile={handleExportProfile}
               onTestProfile={(name) => handleTestFingerprint(name)}
               onOpenNewProfileModal={() => {
-                setCreateModalPresetIdx(0);
                 setCreateModalOpen(true);
               }}
               searchQuery={searchQuery}
@@ -491,8 +511,7 @@ export default function App() {
         {activeTab === 'templates' && (
           <TemplatesView
             presets={presets}
-            onApplyPreset={(idx) => {
-              setCreateModalPresetIdx(idx);
+            onApplyPreset={() => {
               setCreateModalOpen(true);
             }}
           />
@@ -517,19 +536,23 @@ export default function App() {
         )}
       </main>
 
-      <CreateProfileModal
-        isOpen={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        onSubmit={handleCreateProfileSubmit}
+      <ProfileEditDialog
+        isOpen={createModalOpen || editFpName !== null}
+        onClose={() => {
+          setCreateModalOpen(false);
+          setEditFpName(null);
+        }}
         presets={presets}
-        defaultPresetIdx={createModalPresetIdx}
-      />
-
-      <EditFingerprintModal
-        isOpen={editFpName !== null}
-        profile={profiles.find((p) => p.name === editFpName) || null}
-        onClose={() => setEditFpName(null)}
-        onSaved={handleFingerprintSaved}
+        proxies={proxies}
+        existingTags={allTags}
+        folders={folders}
+        engineVersion={settings.engine_version || ''}
+        existingNames={profiles.map((p) => p.name)}
+        editProfile={editFpName ? profiles.find((p) => p.name === editFpName) || null : null}
+        onCreate={handleCreateProfileSubmit}
+        onCreateAndStart={handleCreateProfileAndStart}
+        onUpdate={handleUpdateProfile}
+        onToast={addToast}
       />
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

@@ -17,8 +17,28 @@ export interface Profile {
   screen_width?: number;
   screen_height?: number;
   color_depth?: number;
+  device_pixel_ratio?: number;
   audio_noise?: boolean;
   webrtc_mode?: string;
+  timezone_mode?: string;
+  timezone?: string;
+  locale_mode?: string;
+  locale?: string;
+  geo_mode?: string;
+  geo_lat?: number;
+  geo_lon?: number;
+  geo_accuracy?: number;
+  canvas_noise?: boolean;
+  webgl_noise?: boolean;
+  clientrects_noise?: boolean;
+  dnt?: boolean;
+  media_mic?: number;
+  media_cam?: number;
+  media_spk?: number;
+  on_close?: string;
+  start_urls?: string[];
+  extra_args?: string;
+  browser_version?: string;
   proxy?: string | null;
   tags?: string[];
   folder?: string;
@@ -88,6 +108,8 @@ export interface AppSettings {
   start_url: string;
   mask_webrtc: boolean;
   active_browser_path?: string;
+  engine_version?: string;
+  geoip_db?: string | null;
   browsers?: Array<string | BrowserItem>;
   theme?: 'dark' | 'light';
   language?: 'en' | 'id';
@@ -115,6 +137,51 @@ export interface CreateProfilePayload {
   folder?: string;
   proxy?: string | null;
   notes?: string;
+  extra?: Record<string, unknown>;
+}
+
+export interface ParsedProxy {
+  type: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  line?: number;
+}
+
+export interface ProxyCheckResult {
+  ok: boolean;
+  ip?: string | null;
+  country?: string | null;
+  country_code?: string | null;
+  latency_ms?: number | null;
+  error?: string | null;
+}
+
+export interface ConsistencyFinding {
+  rule: string;
+  message: string;
+  fix?: Record<string, unknown> | null;
+}
+
+export interface ConsistencyResult {
+  score: number;
+  errors: ConsistencyFinding[];
+  warnings: ConsistencyFinding[];
+}
+
+export interface TemplateEntry {
+  id: string;
+  name: string;
+  description?: string;
+  created_at?: string;
+  os?: string;
+  webgl_renderer?: string;
+  hardware_concurrency?: number;
+  device_memory?: number;
+  screen_width?: number;
+  screen_height?: number;
+  [key: string]: unknown;
 }
 
 export interface ProfilesResponse {
