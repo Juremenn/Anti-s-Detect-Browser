@@ -2,6 +2,7 @@ import {
   AppSettings,
   CreateProfilePayload,
   Preset,
+  Profile,
   ProfilesResponse,
   ProxyItem,
   TrashItem,
@@ -46,6 +47,11 @@ export const api = {
     }),
   deleteProfile: (name: string) =>
     request<{ status: string }>('/api/profiles/delete', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  refreshFingerprint: (name: string) =>
+    request<{ status: string; profile: Profile }>('/api/profiles/refresh_fingerprint', {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),

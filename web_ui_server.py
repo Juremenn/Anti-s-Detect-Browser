@@ -187,6 +187,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/profiles/start": self._start,
             "/api/profiles/stop": self._stop,
             "/api/profiles/create": self._create,
+            "/api/profiles/refresh_fingerprint": self._refresh_fingerprint,
+            "/api/profiles/set_fingerprint": self._set_fingerprint,
             "/api/profiles/update": self._update,
             "/api/profiles/delete": self._delete,
             "/api/profiles/open_folder": self._open_folder,
@@ -282,8 +284,26 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             tags=data.get("tags"),
             folder=data.get("folder", ""),
             notes=data.get("notes", ""),
+            diversify=bool(data.get("diversify", True)),
+            custom=data.get("custom"),
         )
         self._send_json({"status": "created", "profile": created})
+
+    def _refresh_fingerprint(self, data: dict):
+        name = data.get("name")
+        profile_mgr.get_profile(name, create_if_missing=False)
+        if running(name):
+            raise ProfileError("Hentikan profil yang sedang berjalan sebelum refresh fingerprint.")
+        profile = profile_mgr.refresh_fingerprint(name)
+        self._send_json({"status": "refreshed", "profile": profile})
+
+    def _set_fingerprint(self, data: dict):
+        name = data.get("name")
+        profile_mgr.get_profile(name, create_if_missing=False)
+        if running(name):
+            raise ProfileError("Hentikan profil yang sedang berjalan sebelum mengubah fingerprint.")
+        profile = profile_mgr.set_fingerprint(name, data.get("fields") or {})
+        self._send_json({"status": "updated", "profile": profile})
 
     def _update(self, data: dict):
         updated = profile_mgr.update_profile(data.get("name"), data.get("fields") or {})

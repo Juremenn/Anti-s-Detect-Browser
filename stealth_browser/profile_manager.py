@@ -106,6 +106,110 @@ def _clean_tags(tags) -> list:
 PROXY_RE = re.compile(r"^(http|https|socks4|socks5)://[A-Za-z0-9.\-\[\]:]+:\d{1,5}$")
 
 
+# --- Fingerprint diversification --------------------------------------------
+# A raw preset copy is a linkable identity: N profiles on the same preset share
+# the exact GPU string, cores, RAM, resolution and UA. _derive_fingerprint splits
+# a base template into a per-profile variant that stays inside what a real
+# browser would report.
+
+# navigator.deviceMemory is capped by Chrome at 8 ("8 GB or more"), so 16 GB
+# is a detection signal, not a spec. Memory stays plausible per GPU family:
+# a desktop RTX card never ships in a 2 GB machine.
+_MEMORY_BY_FAMILY = {
+    "nvidia": [(4, 2), (8, 7)],
+    "amd": [(4, 2), (8, 7)],
+    "intel": [(4, 3), (8, 7)],
+    "apple": [(8, 1)],
+}
+_WIN_SCREENS = [
+    (1920, 1080), (1920, 1080), (1920, 1080), (2560, 1440),
+    (1600, 900), (1680, 1050), (1366, 768), (1536, 864),
+]
+_MAC_SCREENS = [(2560, 1600), (1800, 1169), (1512, 982), (2056, 1329)]
+
+_GPU_VARIANTS = {
+    "nvidia": {
+        "webgl_vendor": "Google Inc. (NVIDIA)",
+        "renderers": [
+            "ANGLE (NVIDIA, NVIDIA GeForce RTX 3050 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+            "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+            "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+            "ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+            "ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+            "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+            "ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 SUPER Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        ],
+        "concurrency": [8, 12, 16, 24],
+    },
+    "intel": {
+        "webgl_vendor": "Google Inc. (Intel)",
+        "renderers": [
+            "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)",
+            "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+            "ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+            "ANGLE (Intel, Intel(R) Arc(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        ],
+        "concurrency": [4, 8, 12, 16],
+    },
+    "amd": {
+        "webgl_vendor": "Google Inc. (AMD)",
+        "renderers": [
+            "ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)",
+            "ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+            "ANGLE (AMD, AMD Radeon RX 7600 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        ],
+        "concurrency": [6, 8, 12, 16],
+    },
+    "apple": {
+        "webgl_vendor": "Google Inc. (Apple)",
+        "renderers": [
+            "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
+            "ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)",
+            "ANGLE (Apple, ANGLE Metal Renderer: Apple M2 Pro, Unspecified Version)",
+            "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)",
+        ],
+        "concurrency": [8, 10, 12],
+    },
+}
+
+# "Chrome/131.0.0.0" -> "Chrome/131.0.<build>.<patch>". Major stays untouched so
+# it never contradicts the Sec-CH-UA header the real engine sends; only the
+# build/patch digits vary, which is how real fleets look.
+_UA_BUILD_RE = re.compile(r"(Chrome/\d+\.0\.)(\d+)\.(\d+)")
+
+def _derive_fingerprint(base: dict, rng: random.Random) -> dict:
+    renderer = str(base.get("webgl_renderer", ""))
+    if "Apple" in renderer:
+        family = "apple"
+    elif "NVIDIA" in renderer:
+        family = "nvidia"
+    elif "Intel" in renderer:
+        family = "intel"
+    else:
+        family = "amd"
+    pool = _GPU_VARIANTS[family]
+
+    ua = str(base.get("user_agent", ""))
+    if ua:
+        ua = _UA_BUILD_RE.sub(
+            lambda m: f"{m.group(1)}{rng.randint(6200, 6900)}.{rng.randint(0, 120)}", ua)
+
+    memories, weights = zip(*_MEMORY_BY_FAMILY[family])
+    screen = rng.choice(_MAC_SCREENS if family == "apple" else _WIN_SCREENS)
+    return {
+        "webgl_vendor": pool["webgl_vendor"],
+        "webgl_renderer": rng.choice(pool["renderers"]),
+        "hardware_concurrency": rng.choice(pool["concurrency"]),
+        "device_memory": rng.choices(memories, weights=weights)[0],
+        "screen_width": screen[0],
+        "screen_height": screen[1],
+        "user_agent": ua,
+        "canvas_seed": rng.randint(100000, 9999999),
+        "audio_seed": rng.randint(100000, 9999999),
+        "font_seed": rng.randint(100000, 9999999),
+    }
+
+
 def validate_proxy(proxy: str) -> str:
     proxy = proxy.strip()
     if not proxy:
@@ -128,6 +232,74 @@ def _clean_fields(fields: dict) -> dict:
             out[key] = ("" if value is None else str(value)).strip()[:500 if key == "notes" else 200]
     if "proxy" in out:
         out["proxy"] = validate_proxy(out["proxy"])
+    return out
+
+
+def _validate_custom_fingerprint(fields: dict) -> dict:
+    """Validate user-entered fingerprint values. Only provided keys are returned."""
+    if not isinstance(fields, dict):
+        raise ProfileError("Data fingerprint tidak valid.")
+    out = {}
+
+    if "platform" in fields:
+        platform = str(fields["platform"]).strip()
+        if platform and platform not in ("Win32", "MacIntel"):
+            raise ProfileError("Platform harus Win32 atau MacIntel.")
+        out["platform"] = platform or "Win32"
+
+    for key in ("webgl_vendor", "webgl_renderer", "user_agent"):
+        if key in fields:
+            value = str(fields[key] or "").strip()
+            if not value:
+                raise ProfileError(f"'{key}' tidak boleh kosong.")
+            if len(value) > 300:
+                raise ProfileError(f"'{key}' maksimal 300 karakter.")
+            out[key] = value
+
+    if "hardware_concurrency" in fields:
+        try:
+            cores = int(fields["hardware_concurrency"])
+        except (TypeError, ValueError):
+            raise ProfileError("Jumlah core harus angka.")
+        if not 1 <= cores <= 128:
+            raise ProfileError("Jumlah core harus di antara 1 dan 128.")
+        out["hardware_concurrency"] = cores
+
+    if "device_memory" in fields:
+        try:
+            memory = float(fields["device_memory"])
+        except (TypeError, ValueError):
+            raise ProfileError("RAM harus angka.")
+        # Chrome reports deviceMemory only in these steps, capped at 8.
+        if memory not in (0.25, 0.5, 1, 2, 4, 8):
+            raise ProfileError("RAM harus salah satu dari: 0.25, 0.5, 1, 2, 4, atau 8 GB (batas report Chrome).")
+        out["device_memory"] = memory
+
+    for key in ("screen_width", "screen_height"):
+        if key in fields:
+            try:
+                value = int(fields[key])
+            except (TypeError, ValueError):
+                raise ProfileError(f"{key.replace('_', ' ').title()} harus angka.")
+            if not 400 <= value <= 7680:
+                raise ProfileError("Resolusi layar harus di antara 400 dan 7680 piksel.")
+            out[key] = value
+
+    if "languages" in fields:
+        langs = [s.strip()[:16] for s in str(fields["languages"]).split(",") if s.strip()]
+        if len(langs) > 6:
+            raise ProfileError("Maksimal 6 bahasa.")
+        out["languages"] = langs or ["en-US", "en"]
+
+    if "color_depth" in fields:
+        try:
+            depth = int(fields["color_depth"])
+        except (TypeError, ValueError):
+            raise ProfileError("Color depth harus angka.")
+        if depth not in (24, 30):
+            raise ProfileError("Color depth harus 24 atau 30.")
+        out["color_depth"] = depth
+
     return out
 
 
@@ -183,7 +355,8 @@ class ProfileManager:
     # --- CRUD ------------------------------------------------------------------
 
     def create_profile(self, name: str, preset_index: int = 0, proxy: Optional[str] = None,
-                       tags=None, folder: str = "", notes: str = "") -> dict:
+                       tags=None, folder: str = "", notes: str = "",
+                       diversify: bool = True, custom: Optional[dict] = None) -> dict:
         name = validate_name(name)
         profile_path = self.profiles_dir / name
         if (profile_path / "config.json").exists():
@@ -192,21 +365,26 @@ class ProfileManager:
             preset_index = int(preset_index)
         except (TypeError, ValueError):
             preset_index = 0
+        preset_index %= len(HARDWARE_PRESETS)
 
         user_data_path = profile_path / "UserData"
         user_data_path.mkdir(parents=True, exist_ok=True)
 
-        preset = HARDWARE_PRESETS[preset_index % len(HARDWARE_PRESETS)].copy()
+        preset = HARDWARE_PRESETS[preset_index].copy()
+        fingerprint = _derive_fingerprint(preset, random.Random()) if diversify else {}
+        overrides = _validate_custom_fingerprint(custom or {})
         profile = {
             "name": name,
             "uuid": str(uuid.uuid4()),
             "created_at": str(int(time.time())),
             "user_data_dir": str(user_data_path),
             "mask_webrtc": True,
-            "canvas_seed": random.randint(100000, 9999999),
-            "audio_seed": random.randint(100000, 9999999),
-            "font_seed": random.randint(100000, 9999999),
+            "base_preset": preset_index,
+            "diversified": bool(diversify) and not overrides,
+            "custom": bool(overrides),
             **preset,
+            **fingerprint,
+            **overrides,
             **_clean_fields({"proxy": proxy, "tags": tags or [], "folder": folder, "notes": notes}),
         }
         _write_json(profile_path / "config.json", profile)
@@ -224,6 +402,27 @@ class ProfileManager:
     def update_profile(self, name: str, fields: dict) -> dict:
         profile = self.get_profile(name, create_if_missing=False)
         profile.update(_clean_fields(fields or {}))
+        _write_json(self._path(name) / "config.json", profile)
+        return profile
+
+    def refresh_fingerprint(self, name: str) -> dict:
+        """Regenerate the device identity: GPU variant, cores, RAM, screen, UA build, all seeds."""
+        profile = self.get_profile(name, create_if_missing=False)
+        profile.update(_derive_fingerprint(profile, random.Random()))
+        profile["diversified"] = True
+        profile["custom"] = False
+        _write_json(self._path(name) / "config.json", profile)
+        return profile
+
+    def set_fingerprint(self, name: str, fields: dict) -> dict:
+        """Manually set fingerprint fields on an existing profile."""
+        if not fields:
+            raise ProfileError("Tidak ada field fingerprint yang dikirim.")
+        profile = self.get_profile(name, create_if_missing=False)
+        overrides = _validate_custom_fingerprint(fields)
+        profile.update(overrides)
+        profile["custom"] = True
+        profile["diversified"] = False
         _write_json(self._path(name) / "config.json", profile)
         return profile
 
