@@ -154,3 +154,4 @@ Berdasarkan analisis file bytecode `octo/browser/launch_args.pyc` dan `octo/brow
 | **Arsitektur Client** | **Modern & Efisien** | Berbasis Python 3.12 + WebView2 + FastAPI lokal (lebih ringan dibanding Electron multi-process biasa). |
 
 Semua bukti teknis, script ekstraksi (`scripts/unpack_installer.py`, `scripts/extract_pyz.py`, `scripts/scan_pyc_strings.py`), dan laporan parsial telah dikompilasi secara rapi di dalam workspace proyek.
+

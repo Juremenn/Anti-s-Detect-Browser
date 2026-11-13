@@ -88,3 +88,4 @@ Di-inject pada level binding V8 dan object descriptor JavaScript:
   - Octo Browser menyertakan validator p0f internal.
   - Memeriksa packet capture (MTU, TCP Window Size, Options ordering) pada jalur koneksi proxy (`syn_mode: profile_based`).
   - Menolak atau memperingatkan pengguna jika proxy exit node menggunakan TCP stack Linux sementara profil diset sebagai Windows/macOS.
+
