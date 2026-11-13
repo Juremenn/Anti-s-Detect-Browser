@@ -6,11 +6,14 @@ import json
 import random
 import re
 import shutil
+import tempfile
 import time
 import uuid
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
+
+from .fingerprint import derive_identity
 
 BASE_PROFILES_DIR = Path(__file__).resolve().parent.parent / "profiles"
 TRASH_DIRNAME = ".trash"
@@ -99,123 +102,29 @@ def _clean_typed_fields(fields: dict) -> dict:
 
     return out
 
-HARDWARE_PRESETS = [
-    {
-        "id": "win-rtx-3070",
-        "name": "Windows RTX 3070",
-        "label": "Windows · RTX 3070 · 8C/8GB · 1920×1080",
-        "os": "win",
-        "platform": "Win32",
-        "platform_version": "15.0.0",
-        "webgl_vendor": "Google Inc. (NVIDIA)",
-        "webgl_renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)",
-        "gpu_vendor": "Google Inc. (NVIDIA)",
-        "gpu_renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)",
-        "cores": 8,
-        "hardware_concurrency": 8,
-        "memory_gb": 8,
-        "device_memory": 8,
-        "screen": [1920, 1080],
-        "screen_width": 1920,
-        "screen_height": 1080,
-        "color_depth": 24,
-        "device_pixel_ratio": 1.0,
-        "languages": ["en-US", "en"],
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    },
-    {
-        "id": "win-rtx-4080",
-        "name": "Windows RTX 4080",
-        "label": "Windows · RTX 4080 · 16C/16GB · 2560×1440",
-        "os": "win",
-        "platform": "Win32",
-        "platform_version": "15.0.0",
-        "webgl_vendor": "Google Inc. (NVIDIA)",
-        "webgl_renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4080 Direct3D11 vs_5_0 ps_5_0, D3D11)",
-        "gpu_vendor": "Google Inc. (NVIDIA)",
-        "gpu_renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4080 Direct3D11 vs_5_0 ps_5_0, D3D11)",
-        "cores": 16,
-        "hardware_concurrency": 16,
-        "memory_gb": 16,
-        "device_memory": 16,
-        "screen": [2560, 1440],
-        "screen_width": 2560,
-        "screen_height": 1440,
-        "color_depth": 24,
-        "device_pixel_ratio": 1.0,
-        "languages": ["en-US", "en"],
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    },
-    {
-        "id": "win-intel-iris",
-        "name": "Windows Intel Iris Xe",
-        "label": "Windows · Intel Iris Xe · 8C/8GB · 1920×1080",
-        "os": "win",
-        "platform": "Win32",
-        "platform_version": "15.0.0",
-        "webgl_vendor": "Google Inc. (Intel)",
-        "webgl_renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)",
-        "gpu_vendor": "Google Inc. (Intel)",
-        "gpu_renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)",
-        "cores": 8,
-        "hardware_concurrency": 8,
-        "memory_gb": 8,
-        "device_memory": 8,
-        "screen": [1920, 1080],
-        "screen_width": 1920,
-        "screen_height": 1080,
-        "color_depth": 24,
-        "device_pixel_ratio": 1.0,
-        "languages": ["en-US", "en"],
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    },
-    {
-        "id": "mac-apple-m2",
-        "name": "macOS Apple M2",
-        "label": "macOS · Apple M2 · 8C/8GB · 2560×1600",
-        "os": "mac",
-        "platform": "MacIntel",
-        "platform_version": "14.5.0",
-        "webgl_vendor": "Google Inc. (Apple)",
-        "webgl_renderer": "ANGLE (Apple, Apple M2, OpenGL 4.1)",
-        "gpu_vendor": "Google Inc. (Apple)",
-        "gpu_renderer": "ANGLE (Apple, Apple M2, OpenGL 4.1)",
-        "cores": 8,
-        "hardware_concurrency": 8,
-        "memory_gb": 8,
-        "device_memory": 8,
-        "screen": [2560, 1600],
-        "screen_width": 2560,
-        "screen_height": 1600,
-        "color_depth": 30,
-        "device_pixel_ratio": 2.0,
-        "languages": ["en-US", "en"],
-        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    },
-    {
-        "id": "linux-amd-rx6800",
-        "name": "Linux Radeon RX 6800",
-        "label": "Linux · RX 6800 · 12C/16GB · 1920×1080",
-        "os": "linux",
-        "platform": "Linux x86_64",
-        "platform_version": "6.5.0",
-        "webgl_vendor": "Google Inc. (AMD)",
-        "webgl_renderer": "ANGLE (AMD, AMD Radeon RX 6800 XT (RADV NAVI21), OpenGL 4.6)",
-        "gpu_vendor": "Google Inc. (AMD)",
-        "gpu_renderer": "ANGLE (AMD, AMD Radeon RX 6800 XT (RADV NAVI21), OpenGL 4.6)",
-        "cores": 12,
-        "hardware_concurrency": 12,
-        "memory_gb": 16,
-        "device_memory": 16,
-        "screen": [1920, 1080],
-        "screen_width": 1920,
-        "screen_height": 1080,
-        "color_depth": 24,
-        "device_pixel_ratio": 1.0,
-        "languages": ["en-US", "en"],
-        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    }
-]
+# Hardware presets live in data/presets.json so new devices can be added
+# without touching code. The export name stays HARDWARE_PRESETS.
+_PRESETS_FILE = Path(__file__).resolve().parent / "data" / "presets.json"
+
+def _load_presets() -> list:
+    try:
+        with open(_PRESETS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        presets = [dict(p) for p in data.get("presets", []) if isinstance(p, dict)]
+    except (OSError, ValueError):
+        presets = []
+    if not presets:
+        raise RuntimeError(f"Preset perangkat tidak bisa dimuat dari {_PRESETS_FILE}.")
+    # navigator.deviceMemory is capped by Chrome at 8 ("8 GB or more"); a
+    # higher value is a detection signal, so clamp no matter what the file says.
+    for p in presets:
+        try:
+            p["device_memory"] = min(8, float(p.get("device_memory") or 8))
+        except (TypeError, ValueError):
+            p["device_memory"] = 8
+    return presets
+
+HARDWARE_PRESETS = _load_presets()
 
 
 class ProfileError(ValueError):
@@ -461,6 +370,25 @@ class ProfileManager:
         self.profiles_dir = Path(profiles_dir)
         self.trash_dir = self.profiles_dir / TRASH_DIRNAME
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
+        self._heal_profile_names()
+
+    def _heal_profile_names(self):
+        """Ensure all profile config.json files have 'name' synchronized with the folder name."""
+        if not self.profiles_dir.exists():
+            return
+        for item in self.profiles_dir.iterdir():
+            if item.name.startswith(".") or not item.is_dir():
+                continue
+            cfg_file = item / "config.json"
+            if not cfg_file.is_file():
+                continue
+            try:
+                cfg = _read_json(cfg_file)
+                if cfg.get("name") != item.name:
+                    cfg["name"] = item.name
+                    _write_json(cfg_file, cfg)
+            except (OSError, ValueError):
+                continue
 
     # --- paths -----------------------------------------------------------------
 
@@ -474,6 +402,7 @@ class ProfileManager:
         # The stored path may come from another machine (import) or an old location;
         # the folder on disk is the source of truth.
         profile = dict(profile)
+        profile["name"] = profile_path.name
         profile["user_data_dir"] = str(profile_path / "UserData")
         profile.setdefault("tags", [])
         profile.setdefault("folder", "")
@@ -501,17 +430,23 @@ class ProfileManager:
         user_data_path.mkdir(parents=True, exist_ok=True)
 
         preset = HARDWARE_PRESETS[preset_index].copy()
-        fingerprint = _derive_fingerprint(preset, random.Random()) if diversify else {}
+        preset_device_name = preset.pop("name", None)
         overrides = _validate_custom_fingerprint(custom or {})
+        # One 64-bit seed per profile: every derived value (GPU variant, seeds,
+        # grease brand, ...) comes from it, so the identity is reproducible.
+        identity_seed = random.getrandbits(64)
+        fingerprint = (derive_identity(preset, identity_seed)
+                       if diversify and not overrides else {})
         profile = {
-            "name": name,
             "uuid": str(uuid.uuid4()),
             "created_at": str(int(time.time())),
             "user_data_dir": str(user_data_path),
             "mask_webrtc": True,
             "base_preset": preset_index,
+            "identity_seed": identity_seed,
             "diversified": bool(diversify) and not overrides,
             "custom": bool(overrides),
+            "device_name": preset_device_name,
             **preset,
             **fingerprint,
             **overrides,
@@ -519,6 +454,7 @@ class ProfileManager:
                 "proxy": proxy, "tags": tags or [], "folder": folder, "notes": notes,
                 **(extra or {}),
             }),
+            "name": name,
         }
         _write_json(profile_path / "config.json", profile)
         return profile
@@ -530,7 +466,29 @@ class ProfileManager:
             if not create_if_missing:
                 raise ProfileError(f"Profil '{name}' tidak ditemukan.")
             return self.create_profile(name)
-        return self._with_paths(_read_json(config_file), profile_path)
+        cfg = _read_json(config_file)
+        if cfg.get("name") != profile_path.name:
+            cfg["name"] = profile_path.name
+            _write_json(config_file, cfg)
+        return self._with_paths(cfg, profile_path)
+
+    def rename_profile(self, old_name: str, new_name: str) -> dict:
+        old_name = validate_name(old_name)
+        new_name = validate_name(new_name)
+        if old_name == new_name:
+            return self.get_profile(old_name, create_if_missing=False)
+        src = self._path(old_name)
+        dst = self._path(new_name)
+        if not (src / "config.json").exists():
+            raise ProfileError(f"Profil '{old_name}' tidak ditemukan.")
+        if dst.exists():
+            raise ProfileError(f"Profil dengan nama '{new_name}' sudah ada.")
+        _move_with_retry(src, dst)
+        cfg = _read_json(dst / "config.json")
+        cfg["name"] = new_name
+        cfg["user_data_dir"] = str(dst / "UserData")
+        _write_json(dst / "config.json", cfg)
+        return self._with_paths(cfg, dst)
 
     def update_profile(self, name: str, fields: dict) -> dict:
         profile = self.get_profile(name, create_if_missing=False)
@@ -538,14 +496,60 @@ class ProfileManager:
         _write_json(self._path(name) / "config.json", profile)
         return profile
 
-    def refresh_fingerprint(self, name: str) -> dict:
-        """Regenerate the device identity: GPU variant, cores, RAM, screen, UA build, all seeds."""
+    def refresh_fingerprint(self, name: str, keep_cookies: bool = False) -> dict:
+        """Regenerate the device identity: new seed, new fingerprint, and — by
+        default — a wiped UserData so sites see a genuinely fresh device.
+
+        keep_cookies=True keeps session cookies (Default/Cookies) so logins
+        survive; everything else (cache, storage, history) is still deleted.
+        """
         profile = self.get_profile(name, create_if_missing=False)
-        profile.update(_derive_fingerprint(profile, random.Random()))
+        try:
+            base_index = int(profile.get("base_preset", 0)) % len(HARDWARE_PRESETS)
+        except (TypeError, ValueError):
+            base_index = 0
+        base = HARDWARE_PRESETS[base_index]
+        # Re-derive from the base preset (not from the old fingerprint) so the
+        # new identity is not correlated with the previous one.
+        seed = random.getrandbits(64)
+        profile.update(derive_identity(base, seed))
+        profile["identity_seed"] = seed
         profile["diversified"] = True
         profile["custom"] = False
+        self._wipe_user_data(self._path(name) / "UserData", keep_cookies=keep_cookies)
         _write_json(self._path(name) / "config.json", profile)
         return profile
+
+    @staticmethod
+    def _wipe_user_data(user_data: Path, keep_cookies: bool = False):
+        """Delete the isolated storage directory.
+
+        With keep_cookies, Default/Cookies and Default/Network/Cookies are
+        moved out first and restored after the wipe (Chrome holds locks here,
+        so the move goes to a temp dir outside the profile folder).
+        """
+        if not user_data.exists():
+            user_data.mkdir(parents=True, exist_ok=True)
+            return
+        keepers = []
+        tmp_dir = None
+        if keep_cookies:
+            tmp_dir = Path(tempfile.mkdtemp(dir=str(user_data.parent)))
+            for idx, rel in enumerate((Path("Default") / "Cookies",
+                                       Path("Default") / "Network" / "Cookies")):
+                src = user_data / rel
+                if src.exists():
+                    dst = tmp_dir / f"{idx}_{rel.name}"
+                    shutil.move(str(src), str(dst))
+                    keepers.append((dst, rel))
+        shutil.rmtree(user_data, ignore_errors=True)
+        user_data.mkdir(parents=True, exist_ok=True)
+        for dst, rel in keepers:
+            target = user_data / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(dst), str(target))
+        if tmp_dir is not None:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def set_fingerprint(self, name: str, fields: dict) -> dict:
         """Manually set fingerprint fields on an existing profile."""
@@ -679,6 +683,7 @@ class ProfileManager:
             **{k: profile[k] for k in self.TEMPLATE_KEYS if k in profile},
             # Seeds are never saved: a template must not ship a shared identity.
             "canvas_seed": None, "audio_seed": None, "font_seed": None,
+            "media_seed": None, "voice_seed": None, "identity_seed": None,
         }
         templates = [t for t in self.list_templates() if t.get("name") != name]
         templates.append(entry)
@@ -723,9 +728,12 @@ class ProfileManager:
             "created_at": str(int(time.time())),
             **_clean_typed_fields(data),
         })
-        for seed in ("canvas_seed", "audio_seed", "font_seed"):
+        for seed in ("canvas_seed", "audio_seed", "font_seed",
+                     "media_seed", "voice_seed"):
             if not isinstance(profile.get(seed), int):
                 profile[seed] = random.randint(100000, 9999999)
+        if not isinstance(profile.get("identity_seed"), int):
+            profile["identity_seed"] = random.getrandbits(64)
         profile = self._with_paths(profile, profile_path)
         _write_json(profile_path / "config.json", profile)
         return profile

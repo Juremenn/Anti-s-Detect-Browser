@@ -6,6 +6,7 @@ Binds to 127.0.0.1 only and rejects requests from other origins.
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -13,10 +14,11 @@ import time
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Dict, List
-from urllib.parse import urlparse
+from typing import Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 
 from stealth_browser.consistency import evaluate as evaluate_consistency
+from stealth_browser.fingerprint import resolve_overrides
 from stealth_browser.launcher import StealthLauncher, discover_available_browsers
 from stealth_browser.profile_manager import HARDWARE_PRESETS, ProfileError, ProfileManager
 from stealth_browser import proxy_utils
@@ -77,24 +79,46 @@ launcher = StealthLauncher(browser_path=settings["browser_path"] or None)
 _engine_version_cache = {"path": None, "version": ""}
 
 
+def _get_file_version_win(filepath: str) -> str:
+    try:
+        import ctypes
+        size = ctypes.windll.version.GetFileVersionInfoSizeW(filepath, None)
+        if not size:
+            return ""
+        res = ctypes.create_string_buffer(size)
+        if not ctypes.windll.version.GetFileVersionInfoW(filepath, 0, size, res):
+            return ""
+        ptr = ctypes.c_void_p()
+        length = ctypes.c_uint()
+        if ctypes.windll.version.VerQueryValueW(res, "\\", ctypes.byref(ptr), ctypes.byref(length)):
+            vals = (ctypes.c_uint * 13).from_address(ptr.value)
+            ms, ls = vals[2], vals[3]
+            return f"{ms >> 16}.{ms & 0xffff}.{ls >> 16}.{ls & 0xffff}"
+    except Exception:
+        pass
+    return ""
+
+
 def detect_engine_version() -> str:
-    """'131.0.6778.85' from chrome --version; cached per binary path."""
+    """'131.0.6778.85' from binary version info; cached per binary path."""
     path = launcher.chrome_path
     if not path:
         return ""
     if _engine_version_cache["path"] == path:
         return _engine_version_cache["version"]
     version = ""
-    try:
-        out = subprocess.run([path, "--version"], capture_output=True, text=True,
-                             timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        # "Chromium 131.0.6778.85" / "Google Chrome 131.0..." / "Microsoft Edge 131..."
-        for token in (out.stdout or "").split():
-            if token and token[0].isdigit() and "." in token:
-                version = token
-                break
-    except (OSError, subprocess.SubprocessError):
-        pass
+    if os.name == "nt":
+        version = _get_file_version_win(path)
+    if not version:
+        try:
+            out = subprocess.run([path, "--version"], capture_output=True, text=True,
+                                 timeout=2, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            for token in (out.stdout or "").split():
+                if token and token[0].isdigit() and "." in token:
+                    version = token
+                    break
+        except (OSError, subprocess.SubprocessError):
+            pass
     _engine_version_cache.update({"path": path, "version": version})
     return version
 
@@ -133,8 +157,48 @@ def stop_profile(name: str) -> bool:
         proc = active_processes.pop(name, None)
     if proc and proc.poll() is None:
         kill_tree(proc)
+        # Give Chrome a beat to release file locks before touching UserData.
+        time.sleep(0.3)
+        try:
+            _apply_on_close(profile_mgr.get_profile(name, create_if_missing=False))
+        except (ProfileError, OSError):
+            pass
         return True
     return False
+
+
+_CACHE_DIR_NAMES = (
+    "Cache", "Code Cache", "GPUCache", "ShaderCache",
+    "GrShaderCache", "GraphiteDawnCache", "Media Cache",
+)
+
+def _apply_on_close(profile: dict):
+    """Wipe storage after a clean stop, per the profile's on_close choice."""
+    mode = profile.get("on_close", "keep")
+    if mode not in ("clear_cache", "clear_all"):
+        return
+    user_data = Path(profile["user_data_dir"])
+    if mode == "clear_cache":
+        # Render cache lives under Default; shader caches sit at the root.
+        bases = [user_data / "Default", user_data]
+        for base in bases:
+            for d in _CACHE_DIR_NAMES:
+                shutil.rmtree(base / d, ignore_errors=True)
+    elif mode == "clear_all":
+        shutil.rmtree(user_data, ignore_errors=True)
+        user_data.mkdir(parents=True, exist_ok=True)
+
+
+def proxy_country_for(profile: dict) -> Optional[str]:
+    """Country of the profile's proxy, matched by exact URL against the saved
+    proxy list (its country was set when the proxy was added/checked)."""
+    proxy = (profile.get("proxy") or "").strip()
+    if not proxy:
+        return None
+    for entry in load_proxies():
+        if isinstance(entry, dict) and entry.get("url") == proxy:
+            return entry.get("country") or None
+    return None
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
@@ -194,6 +258,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/presets": lambda: self._send_json({"presets": HARDWARE_PRESETS}),
             "/api/proxies": lambda: self._send_json({"proxies": load_proxies()}),
             "/api/templates": lambda: self._send_json({"templates": profile_mgr.list_templates()}),
+            "/api/profiles/detail": self._profile_detail,
             "/api/geoip/status": lambda: self._send_json({
                 "db": (proxy_utils.find_mmdb().name if proxy_utils.find_mmdb() else None)}),
         }
@@ -201,9 +266,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             if not self._same_origin():
                 return self._error("Origin tidak diizinkan.", 403)
             return self._run(routes[path])
+        if path == "/selfcheck":
+            # Served from the repo root, not web_ui/ (the vite build empties it).
+            return self._serve_selfcheck()
         if path.startswith("/api/"):
             return self._error("Endpoint tidak ditemukan.", 404)
         super().do_GET()
+
+    def _serve_selfcheck(self):
+        file = ROOT / "selfcheck.html"
+        if not file.is_file():
+            return self._error("selfcheck.html tidak ditemukan.", 404)
+        body = file.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self):
         path = urlparse(self.path).path
@@ -298,15 +377,22 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _start(self, data: dict):
         name = data.get("name")
-        profile_mgr.get_profile(name, create_if_missing=False)
+        profile = profile_mgr.get_profile(name, create_if_missing=False)
         if not launcher.chrome_path:
             raise ProfileError("Browser Chromium/Chrome/Edge tidak ditemukan. Atur path-nya di Settings.")
+        # Resolve "based on proxy" values from the proxy's country, and score
+        # the identity once so the UI can warn about inconsistencies at launch.
+        country = proxy_country_for(profile)
+        overrides = resolve_overrides(profile, country)
+        consistency = evaluate_consistency(
+            profile, engine_version=detect_engine_version(), proxy_country=country)
         with proc_lock:
             if running(name):
                 return self._send_json({"status": "already_running", "pid": active_processes[name].pid})
-            proc = launcher.launch(profile_name=name, target_url=data.get("url") or settings["start_url"])
+            proc = launcher.launch(profile_name=name, target_url=data.get("url") or settings["start_url"],
+                                   overrides=overrides)
             active_processes[name] = proc
-        self._send_json({"status": "started", "pid": proc.pid})
+        self._send_json({"status": "started", "pid": proc.pid, "consistency": consistency})
 
     def _stop(self, data: dict):
         self._send_json({"status": "stopped" if stop_profile(data.get("name")) else "not_running"})
@@ -329,9 +415,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         name = data.get("name")
         profile_mgr.get_profile(name, create_if_missing=False)
         if running(name):
-            raise ProfileError("Hentikan profil yang sedang berjalan sebelum refresh fingerprint.")
-        profile = profile_mgr.refresh_fingerprint(name)
+            raise ProfileError("Hentikan profil yang sedang berjalan sebelum regenerate identitas.")
+        keep_cookies = bool(data.get("keep_cookies", False))
+        profile = profile_mgr.refresh_fingerprint(name, keep_cookies=keep_cookies)
         self._send_json({"status": "refreshed", "profile": profile})
+
+    def _profile_detail(self):
+        """Full stored config + launch-resolved values for the self-check page."""
+        query = parse_qs(urlparse(self.path).query)
+        name = (query.get("name") or [""])[0]
+        profile = profile_mgr.get_profile(name, create_if_missing=False)
+        overrides = resolve_overrides(profile, proxy_country_for(profile))
+        self._send_json({**profile, "_overrides": overrides})
 
     def _set_fingerprint(self, data: dict):
         name = data.get("name")
@@ -346,6 +441,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         refused while the profile runs; other keys are simple settings."""
         name = data.get("name")
         fields = dict(data.get("fields") or {})
+        new_name = fields.pop("name", None)
+        if new_name and new_name != name:
+            if running(name):
+                raise ProfileError("Hentikan profil yang sedang berjalan sebelum mengubah nama.")
+            profile_mgr.rename_profile(name, new_name)
+            name = new_name
+
         fingerprint_keys = {"platform", "webgl_vendor", "webgl_renderer", "user_agent",
                             "hardware_concurrency", "device_memory", "screen_width",
                             "screen_height", "color_depth", "languages"}
@@ -367,7 +469,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self._send_json(result)
 
     def _delete(self, data: dict):
-        names = data.get("names") or [data.get("name")]
+        names = data.get("names") or ([data.get("name")] if data.get("name") else [])
+        if not names:
+            raise ProfileError("Pilih minimal satu profil untuk dihapus.")
         trashed, errors = [], []
         for name in names:
             try:
@@ -376,6 +480,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 trashed.append(name)
             except (ProfileError, OSError) as e:
                 errors.append(f"{name}: {e}")
+        if not trashed and errors:
+            raise ProfileError("; ".join(errors))
         self._send_json({"status": "trashed", "trashed": trashed, "errors": errors})
 
     def _open_folder(self, data: dict):

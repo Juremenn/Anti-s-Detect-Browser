@@ -606,6 +606,7 @@ export function ProfileEditDialog({
       color_depth: parseInt(form.colorDepth, 10),
       languages: form.languages.split(',').map((s) => s.trim()).filter(Boolean),
     };
+    if (form.name.trim()) fields.name = form.name.trim();
     if (form.vendor.trim()) fields.webgl_vendor = form.vendor.trim();
     if (form.renderer.trim()) fields.webgl_renderer = form.renderer.trim();
     if (form.userAgent.trim()) fields.user_agent = form.userAgent.trim();
@@ -619,7 +620,7 @@ export function ProfileEditDialog({
     setError('');
     try {
       if (editProfile) {
-        await onUpdate(clean, collectUpdateFields());
+        await onUpdate(editProfile.name, collectUpdateFields());
       } else {
         const payload = collectCreatePayload(clean);
         if (startAfter && onCreateAndStart) {
