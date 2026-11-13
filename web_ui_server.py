@@ -74,21 +74,6 @@ settings = load_settings()
 launcher = StealthLauncher(browser_path=settings["browser_path"] or None)
 
 
-def ensure_initial_profiles():
-    """Ensure there are default profiles available so the user is never greeted with a blank screen."""
-    profiles = profile_mgr.list_profiles()
-    if not profiles:
-        try:
-            profile_mgr.create_profile("Akun_Utama_RTX3070", preset_index=0, tags=["Utama", "E-Commerce"])
-            profile_mgr.create_profile("Akun_Toko_RTX4080", preset_index=1, tags=["Toko", "Ads"])
-            profile_mgr.create_profile("Akun_Apple_M2", preset_index=3, tags=["Social", "macOS"])
-        except Exception:
-            pass
-
-
-ensure_initial_profiles()
-
-
 def kill_tree(proc: subprocess.Popen):
     """Chrome spawns child processes; terminating only the parent can leave them holding UserData."""
     if proc.poll() is not None:
