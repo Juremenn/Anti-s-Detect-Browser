@@ -6,3 +6,5 @@ __pycache__/
 profiles/
 app_settings.json
 proxies.json
+frontend/node_modules/
+frontend/dist/
