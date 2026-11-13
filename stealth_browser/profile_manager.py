@@ -140,3 +140,4 @@ class ProfileManager:
             shutil.rmtree(profile_path, ignore_errors=True)
             return True
         return False
+

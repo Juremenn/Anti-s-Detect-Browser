@@ -5,3 +5,4 @@ Reverse-engineered for offline, account-free multi-accounting & automation.
 """
 
 __version__ = "1.0.0"
+

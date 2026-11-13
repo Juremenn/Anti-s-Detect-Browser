@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Octo Browser - Offline Edition</title>
+  <link rel="icon" type="image/png" href="/assets/logo.png">
+  <style>
+    :root {
+      --bg-base: #0f111a;
+      --bg-sidebar: #141724;
+      --bg-card: #1b1e2e;
+      --bg-card-hover: #22263a;
+      --bg-input: #121420;
+      --border: #262a40;
+      --border-focus: #3b82f6;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #10b981;
+      --success-hover: #059669;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --warning: #f59e0b;
+      --tag-bg: #1e293b;
+      --tag-text: #93c5fd;
+      --font: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font);
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* --- SIDEBAR --- */
+    .sidebar {
+      width: 240px;
+      background-color: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    .brand img {
+      width: 32px;
+      height: 32px;
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge-offline {
+      font-size: 10px;
+      font-weight: 600;
+      background-color: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .nav-menu {
+      flex: 1;
+      padding: 14px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+
+    .nav-item:hover {
+      background-color: var(--bg-card);
+      color: var(--text-main);
+    }
+
+    .nav-item.active {
+      background-color: var(--primary);
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .nav-item svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    .sidebar-footer {
+      padding: 14px 18px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-dim);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .engine-badge {
+      color: #38bdf8;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* --- MAIN CONTENT AREA --- */
+    .main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background-color: var(--bg-base);
+    }
+
+    /* TOP ACTION BAR */
+    .top-bar {
+      height: 64px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      background-color: var(--bg-sidebar);
+      gap: 16px;
+    }
+
+    .action-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .action-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      outline: none;
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background-color: var(--bg-card);
+      color: var(--text-main);
+      border-color: var(--border);
+    }
+    .btn-secondary:hover {
+      background-color: var(--bg-card-hover);
+      border-color: #3b4263;
+    }
+
+    .search-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .search-box input {
+      background-color: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px 8px 34px;
+      color: var(--text-main);
+      font-size: 13px;
+      width: 240px;
+      transition: border-color 0.15s;
+      outline: none;
+    }
+    .search-box input:focus {
+      border-color: var(--border-focus);
+    }
+
+    .search-box svg {
+      position: absolute;
+      left: 10px;
+      width: 15px;
+      height: 15px;
+      fill: var(--text-dim);
+    }
+
+    .select-dropdown {
+      background-color: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text-main);
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    /* --- DATA TABLE CONTAINER --- */
+    .table-container {
+      flex: 1;
+      padding: 20px 24px;
+      overflow-y: auto;
+    }
+
+    .table-wrapper {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    th {
+      background-color: #171926;
+      color: var(--text-dim);
+      font-weight: 600;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+    }
+
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-main);
+      vertical-align: middle;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background-color: var(--bg-card-hover);
+    }
+
+    .profile-name-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .profile-title {
+      font-weight: 600;
+      font-size: 13.5px;
+      color: #ffffff;
+    }
+
+    .profile-id {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    /* STATUS PILLS */
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+
+    .status-ready {
+      background-color: rgba(148, 163, 184, 0.1);
+      color: #cbd5e1;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .status-ready .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: #94a3b8;
+    }
+
+    .status-active {
+      background-color: rgba(16, 185, 129, 0.12);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .status-active .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+
+    /* HARDWARE SPEC CELL */
+    .hw-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .os-icon {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .hw-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .hw-renderer {
+      font-weight: 500;
+      color: #e2e8f0;
+      font-size: 12px;
+    }
+    .hw-specs {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    /* TAG BADGES */
+    .tag {
+      background-color: var(--tag-bg);
+      color: var(--tag-text);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* ACTION BUTTONS */
+    .btn-action-start {
+      background-color: #059669;
+      color: #ffffff;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 12px;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s;
+    }
+    .btn-action-start:hover {
+      background-color: #047857;
+    }
+
+    .btn-action-stop {
+      background-color: #dc2626;
+      color: #ffffff;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 12px;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-action-stop:hover {
+      background-color: #b91c1c;
+    }
+
+    .btn-icon {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      padding: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    .btn-icon:hover {
+      background-color: var(--bg-card-hover);
+      color: var(--text-main);
+      border-color: #3b4263;
+    }
+
+    .btn-icon.danger:hover {
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+
+    /* --- MODAL DIALOG --- */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background-color: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal-box {
+      background-color: var(--bg-sidebar);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 520px;
+      max-width: 90vw;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-header h3 {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-size: 20px;
+      cursor: pointer;
+    }
+    .modal-close:hover {
+      color: var(--text-main);
+    }
+
+    .modal-body {
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .form-group input, .form-group select {
+      background-color: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: var(--text-main);
+      font-size: 13px;
+      outline: none;
+    }
+    .form-group input:focus, .form-group select:focus {
+      border-color: var(--border-focus);
+    }
+
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      background-color: #11131c;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LEFT SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <img src="/assets/logo.png" alt="Octo Logo">
+      <div class="brand-title">
+        Octo Browser
+        <span class="badge-offline">OFFLINE</span>
+      </div>
+    </div>
+
+    <nav class="nav-menu">
+      <a class="nav-item active" href="#">
+        <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        Profiles
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        Proxies
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+        Templates
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        Trash Bin
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        Settings
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div>Engine Aktif:</div>
+      <div id="active-engine-text" class="engine-badge">Mendeteksi...</div>
+      <div id="total-stats-text" style="margin-top: 4px;">Profil: 0 | Aktif: 0</div>
+    </div>
+  </aside>
+
+  <!-- MAIN AREA -->
+  <main class="main-area">
+    <!-- TOP BAR -->
+    <header class="top-bar">
+      <div class="action-left">
+        <button class="btn btn-primary" onclick="openCreateModal()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          New Profile
+        </button>
+
+        <button class="btn btn-secondary" onclick="quickCreateProfile()">
+          ⚡ Quick Profile
+        </button>
+
+        <button class="btn btn-secondary" onclick="testFingerprint()">
+          🛡️ Uji Fingerprint
+        </button>
+      </div>
+
+      <div class="action-right">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <input type="text" id="search-input" placeholder="Search profiles..." oninput="filterTable()">
+        </div>
+
+        <select id="filter-status" class="select-dropdown" onchange="filterTable()">
+          <option value="all">Status: Semua</option>
+          <option value="active">Aktif</option>
+          <option value="ready">Siap</option>
+        </select>
+      </div>
+    </header>
+
+    <!-- DATA TABLE -->
+    <section class="table-container">
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 40px; text-align: center;"><input type="checkbox"></th>
+              <th style="width: 220px;">Profile Name</th>
+              <th style="width: 140px;">Status</th>
+              <th style="width: 130px;">Tags</th>
+              <th style="width: 160px;">Proxy</th>
+              <th>Fingerprint Specs</th>
+              <th style="width: 170px; text-align: right;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="profiles-tbody">
+            <!-- Rows injected by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL CREATE PROFILE -->
+  <div class="modal-overlay" id="create-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Create New Profile</h3>
+        <button class="modal-close" onclick="closeCreateModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Profile Name</label>
+          <input type="text" id="modal-profile-name" placeholder="e.g. Work_Account_1">
+        </div>
+
+        <div class="form-group">
+          <label>Hardware & OS Preset</label>
+          <select id="modal-preset">
+            <option value="0">Windows 10 | NVIDIA GeForce RTX 3070 (8-Core, 8GB)</option>
+            <option value="1">Windows 10 | NVIDIA GeForce RTX 4080 (16-Core, 16GB)</option>
+            <option value="2">Windows 10 | Intel Iris Xe Graphics (8-Core, 8GB)</option>
+            <option value="3">macOS 14 | Apple M2 (8-Core, 8GB)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Tags (Optional)</label>
+          <input type="text" id="modal-tags" placeholder="e.g. Work, Crypto, Ads">
+        </div>
+
+        <div class="form-group">
+          <label>Proxy Server (Optional)</label>
+          <input type="text" id="modal-proxy" placeholder="e.g. http://user:pass@host:port or socks5://host:port">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitCreateProfile()">Create Profile</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allProfiles = [];
+
+    async function loadData() {
+      try {
+        const res = await fetch('/api/profiles');
+        const data = await res.json();
+        allProfiles = data.profiles || [];
+        
+        // Update stats
+        const activeCount = allProfiles.filter(p => p.is_active).length;
+        document.getElementById('total-stats-text').textContent = `Profil: ${allProfiles.length} | Aktif: ${activeCount}`;
+        
+        if (data.active_engine) {
+          document.getElementById('active-engine-text').textContent = data.active_engine;
+        }
+
+        renderTable(allProfiles);
+      } catch (err) {
+        console.error('Failed to load profiles:', err);
+      }
+    }
+
+    function renderTable(profiles) {
+      const tbody = document.getElementById('profiles-tbody');
+      tbody.innerHTML = '';
+
+      if (profiles.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 40px;">Belum ada profil. Klik '+ New Profile' atau '⚡ Quick Profile' untuk membuat identitas baru.</td></tr>`;
+        return;
+      }
+
+      profiles.forEach(p => {
+        const tr = document.createElement('tr');
+        
+        // OS Icon & info
+        const isMac = (p.platform || '').toLowerCase().includes('mac');
+        const osSvg = isMac 
+          ? `<svg class="os-icon" viewBox="0 0 170 170" fill="#94a3b8"><path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.7-3.08-7.77-7.92-12.23-14.51-6.19-9.17-11.05-19.65-14.59-31.44-3.53-11.8-5.3-23.01-5.3-33.64 0-14.04 3.65-25.75 10.95-35.15 7.3-9.4 16.51-14.18 27.63-14.35 5.18 0 10.77 1.43 16.76 4.31 5.99 2.87 9.87 4.38 11.64 4.54 1.54 0 5.49-1.57 11.86-4.71 6.37-3.14 11.97-4.47 16.8-4.01 12.82.78 22.95 5.75 30.38 14.93-11.19 6.78-16.65 16.14-16.37 28.09.28 9.58 3.99 17.58 11.13 24 7.14 6.42 15.69 10.05 25.64 10.88-2.13 6.64-4.87 13.52-8.21 20.65zM119.22 31.81c0-7.35 2.65-14.4 7.95-21.14 5.3-6.75 11.97-10.67 20.02-11.77.14 1.13.21 2.14.21 3.03 0 7.34-2.78 14.36-8.34 21.05-5.56 6.7-12.27 10.46-20.13 11.27-.22-.81-.33-1.63-.33-2.44z"/></svg>`
+          : `<svg class="os-icon" viewBox="0 0 88 88" fill="#38bdf8"><path d="M0 12.4L35.7 7.5V42H0V12.4zM0 45.6H35.7V80.1L0 75.3V45.6zM39.4 7V42H87.3V0L39.4 7zM39.4 45.6H87.3V87.6L39.4 80.6V45.6z"/></svg>`;
+
+        const statusBadge = p.is_active
+          ? `<span class="status-pill status-active"><span class="dot"></span>Aktif (PID ${p.pid})</span>`
+          : `<span class="status-pill status-ready"><span class="dot"></span>Siap</span>`;
+
+        const actionBtn = p.is_active
+          ? `<button class="btn-action-stop" onclick="stopProfile('${p.name}')">⏹ Stop</button>`
+          : `<button class="btn-action-start" onclick="startProfile('${p.name}')">▶ Start</button>`;
+
+        const proxyText = p.proxy ? p.proxy : `<span style="color: var(--text-dim);">Direct</span>`;
+        const tagText = `<span class="tag">Default</span>`;
+
+        tr.innerHTML = `
+          <td style="text-align: center;"><input type="checkbox"></td>
+          <td>
+            <div class="profile-name-cell">
+              <span class="profile-title">${p.name}</span>
+              <span class="profile-id">Seed: ${p.canvas_seed || '-'}</span>
+            </div>
+          </td>
+          <td>${statusBadge}</td>
+          <td>${tagText}</td>
+          <td>${proxyText}</td>
+          <td>
+            <div class="hw-cell">
+              ${osSvg}
+              <div class="hw-info">
+                <div class="hw-renderer">${p.webgl_renderer || 'Discrete GPU'}</div>
+                <div class="hw-specs">${p.hardware_concurrency || 8} Cores | ${p.device_memory || 8} GB | ${p.screen_width || 1920}x${p.screen_height || 1080}</div>
+              </div>
+            </div>
+          </td>
+          <td style="text-align: right;">
+            <div style="display: inline-flex; align-items: center; gap: 8px;">
+              ${actionBtn}
+              <button class="btn-icon" title="Buka Folder Data" onclick="openProfileFolder('${p.name}')">📁</button>
+              <button class="btn-icon danger" title="Hapus Profil" onclick="deleteProfile('${p.name}')">🗑</button>
+            </div>
+          </td>
+        `;
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterTable() {
+      const q = document.getElementById('search-input').value.toLowerCase();
+      const statusFilter = document.getElementById('filter-status').value;
+
+      const filtered = allProfiles.filter(p => {
+        const matchesQuery = p.name.toLowerCase().includes(q) || (p.webgl_renderer || '').toLowerCase().includes(q);
+        const matchesStatus = statusFilter === 'all' 
+          ? true 
+          : (statusFilter === 'active' ? p.is_active : !p.is_active);
+        return matchesQuery && matchesStatus;
+      });
+
+      renderTable(filtered);
+    }
+
+    async function startProfile(name) {
+      try {
+        await fetch('/api/profiles/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name })
+        });
+        await loadData();
+      } catch (e) {
+        alert('Gagal memulai profil: ' + e);
+      }
+    }
+
+    async function stopProfile(name) {
+      try {
+        await fetch('/api/profiles/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name })
+        });
+        await loadData();
+      } catch (e) {
+        alert('Gagal menghentikan profil: ' + e);
+      }
+    }
+
+    async function openProfileFolder(name) {
+      await fetch('/api/profiles/open_folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name })
+      });
+    }
+
+    async function deleteProfile(name) {
+      if (!confirm(`Hapus profil '${name}'? Data cookie dan cache profil ini akan dibersihkan.`)) return;
+      await fetch('/api/profiles/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name })
+      });
+      await loadData();
+    }
+
+    async function quickCreateProfile() {
+      const randomId = Math.floor(100 + Math.random() * 900);
+      const name = `Quick_Profile_${randomId}`;
+      const preset = Math.floor(Math.random() * 4);
+      await fetch('/api/profiles/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, preset: preset })
+      });
+      await loadData();
+    }
+
+    function testFingerprint() {
+      if (allProfiles.length === 0) {
+        alert('Buat profil terlebih dahulu sebelum uji fingerprint.');
+        return;
+      }
+      const first = allProfiles[0].name;
+      fetch('/api/profiles/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: first, url: 'https://browserleaks.com/canvas' })
+      }).then(() => loadData());
+    }
+
+    // Modal Handlers
+    function openCreateModal() {
+      document.getElementById('modal-profile-name').value = `Profile_${allProfiles.length + 1}`;
+      document.getElementById('create-modal').style.display = 'flex';
+    }
+
+    function closeCreateModal() {
+      document.getElementById('create-modal').style.display = 'none';
+    }
+
+    async function submitCreateProfile() {
+      const name = document.getElementById('modal-profile-name').value.trim();
+      if (!name) {
+        alert('Nama profil tidak boleh kosong.');
+        return;
+      }
+      const preset = parseInt(document.getElementById('modal-preset').value);
+      const proxy = document.getElementById('modal-proxy').value.trim();
+
+      await fetch('/api/profiles/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, preset: preset, proxy: proxy })
+      });
+
+      closeCreateModal();
+      await loadData();
+    }
+
+    // Polling every 1.5 seconds for live status
+    setInterval(loadData, 1500);
+    loadData();
+  </script>
+</body>
+</html>

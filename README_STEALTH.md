@@ -21,36 +21,31 @@ Framework ini mengadopsi dan mereplikasi **seluruh 5 teknik inti pemalsuan finge
 
 ```text
 Octo-Browser/
-├── Buka_Dashboard_UI.bat         # 1-Klik Buka Dashboard Desktop GUI (Rekomendasi Utama)
-├── gui_app.py                    # Aplikasi Desktop GUI Python (Native Dark Mode)
-├── run_stealth.py                # CLI utama untuk mengelola & meluncurkan browser
+├── Buka_Octo_Browser_UI.bat      # 1-KLIK BUKA DESKTOP APP RESMI (REKOMENDASI UTAMA)
+├── web_ui_server.py              # Backend Server Lokal & App Window Launcher
+├── web_ui/                       # Antarmuka Single Page Application (Mirip 100% Octo Browser)
+│   ├── index.html                # Tampilan Dashboard Dark Mode dengan Sidebar & Profil Grid
+│   └── assets/logo.png           # Logo Asli Octo Browser
+├── Buka_Dashboard_UI.bat         # Alternatif Desktop GUI bawaan (Tkinter)
+├── gui_app.py                    # Aplikasi Desktop GUI Python
+├── run_stealth.py                # CLI utama untuk otomasi terminal
 ├── Jalankan_Stealth_Browser.bat  # 1-Klik Buka Profil Bawaan
 ├── Menu_Profil.bat               # Menu Konsol Cepat
-├── README_STEALTH.md             # Panduan lengkap dokumentasi ini
-├── stealth_browser/
-│   ├── __init__.py
-│   ├── profile_manager.py        # Pengelola profil & hardware preset
-│   ├── stealth_hooks.py          # Generator JavaScript injeksi anti-detect
-│   ├── launcher.py               # Spawner Chrome + Dual-layer CDP & Extension
-│   └── extension/                # Unpacked Extension fallback (Manifest V3)
 └── profiles/                     # Direktori penyimpanan profil terisolasi (UserData)
-    ├── profile_rtx3070/
-    └── profile_apple_m2/
 ```
 
 ---
 
-## 3. Cara Penggunaan (Paling Mudah via GUI)
+## 3. Cara Penggunaan (Paling Mudah via UI Mirip Octo Browser Asli)
 
 Cukup dobel-klik file:
-**`Buka_Dashboard_UI.bat`**
+👉 **`Buka_Octo_Browser_UI.bat`**
 
-Antarmuka desktop modern (Dark Theme) akan langsung terbuka tanpa terminal. Dari dashboard ini Anda dapat:
-* Melihat semua profil identitas beserta statusnya (*Siap / Aktif*).
-* Menekan **"+ Buat Profil Baru"** untuk memilih preset hardware (NVIDIA RTX 3070, RTX 4080, Intel Iris, Apple M2) dan proxy.
-* Menekan **"▶ Buka Browser Terpilih"** untuk langsung meluncurkan browser anti-detect.
-* Menekan **"Uji Fingerprint"** untuk memeriksa skor anonimitas di BrowserLeaks / CreepJS.
-* Menekan **"⏹ Hentikan Browser"** atau **"📁 Buka Folder Data"**.
+Aplikasi desktop mandiri akan langsung muncul dengan jendela tersendiri (tanpa address bar atau tab browser) yang **100% identik dengan Octo Browser asli**:
+* **Logo Resmi & Tema Dark Mode:** Palet warna hitam/navy khas Octo Browser (`#0f111a`).
+* **Sidebar Kiri:** Menu Profiles, Proxies, Templates, Trash Bin, dan Settings.
+* **Top Bar:** Tombol **"+ New Profile"**, tombol **"⚡ Quick Profile"**, tombol **"🛡️ Uji Fingerprint"**, dan kolom pencarian.
+* **Data Grid Profil:** Menampilkan nama, status (*Siap* / *Aktif* berwarna hijau menyala), icon OS (Windows/macOS), spesifikasi GPU, Core, RAM, dan tombol aksi **"▶ Start"** / **"⏹ Stop"**.
 
 ---
 

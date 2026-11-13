@@ -1,0 +1,25 @@
+{
+  "name": "Akun_Toko_RTX4080",
+  "uuid": "2a65ee13-2d08-49bb-b65b-e766884fc109",
+  "created_at": "1726897123",
+  "user_data_dir": "C:\\Users\\Nel\\Documents\\Reverse-Engineer-Anything\\Octo-Browser\\profiles\\Akun_Toko_RTX4080\\UserData",
+  "proxy": "",
+  "mask_webrtc": true,
+  "canvas_seed": 6360402,
+  "audio_seed": 5068488,
+  "font_seed": 7986257,
+  "os": "win",
+  "platform": "Win32",
+  "webgl_vendor": "Google Inc. (NVIDIA)",
+  "webgl_renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4080 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "hardware_concurrency": 16,
+  "device_memory": 16,
+  "screen_width": 2560,
+  "screen_height": 1440,
+  "color_depth": 24,
+  "languages": [
+    "en-US",
+    "en"
+  ],
+  "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+}

@@ -12,3 +12,4 @@ if errorlevel 1 (
     echo Terjadi kendala saat menjalankan python. Pastikan Python terinstal di sistem.
     pause
 )
+
