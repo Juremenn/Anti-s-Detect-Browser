@@ -3,5 +3,6 @@ __pycache__/
 *.pyo
 *.pyd
 *.log
-profiles/*/UserData/Crashpad/
-profiles/*/UserData/CrashpadMetrics*
+profiles/
+app_settings.json
+proxies.json

@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import glob
+import socket
 import asyncio
 import subprocess
 from pathlib import Path
@@ -80,6 +81,13 @@ def find_chrome_executable() -> str:
     )
 
 
+def find_free_port() -> int:
+    """Ask the OS for an unused localhost port so several profiles can run at once."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 class StealthLauncher:
     def __init__(self, browser_path: Optional[str] = None, profiles_dir: Optional[Path] = None):
         self.profile_mgr = ProfileManager(profiles_dir) if profiles_dir else ProfileManager()
@@ -129,7 +137,7 @@ class StealthLauncher:
         self,
         profile_name: str,
         target_url: str = "https://browserleaks.com/canvas",
-        remote_port: int = 9222,
+        remote_port: Optional[int] = None,
         headless: bool = False
     ) -> subprocess.Popen:
         """
@@ -138,6 +146,8 @@ class StealthLauncher:
         if not self.chrome_path or not os.path.exists(self.chrome_path):
             raise FileNotFoundError("Path browser Chromium belum disetel atau tidak valid.")
 
+        if not remote_port:
+            remote_port = find_free_port()
         profile = self.profile_mgr.get_profile(profile_name)
         ext_path = self.prepare_extension(profile)
         user_data_dir = profile["user_data_dir"]
