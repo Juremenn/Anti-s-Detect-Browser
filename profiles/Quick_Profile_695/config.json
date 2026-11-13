@@ -1,0 +1,27 @@
+{
+  "name": "Quick_Profile_695",
+  "uuid": "5bc5d730-4e3b-4883-a385-5cfa8419d910",
+  "created_at": "1728948944",
+  "user_data_dir": "C:\\Users\\Nel\\Documents\\Reverse-Engineer-Anything\\Octo-Browser\\profiles\\Quick_Profile_695\\UserData",
+  "proxy": "",
+  "mask_webrtc": true,
+  "canvas_seed": 9406157,
+  "audio_seed": 1762543,
+  "font_seed": 6015143,
+  "os": "win",
+  "platform": "Win32",
+  "webgl_vendor": "Google Inc. (Intel)",
+  "webgl_renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "hardware_concurrency": 8,
+  "device_memory": 8,
+  "screen_width": 1920,
+  "screen_height": 1080,
+  "color_depth": 24,
+  "languages": [
+    "id-ID",
+    "id",
+    "en-US",
+    "en"
+  ],
+  "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+}

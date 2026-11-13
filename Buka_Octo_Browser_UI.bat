@@ -11,3 +11,4 @@ if errorlevel 1 (
     echo [ERROR] Server UI terhenti.
     pause
 )
+

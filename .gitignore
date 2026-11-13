@@ -1,5 +1,7 @@
-*.exe
-*.msi
-*.7z
-extracted/
-Octo Browser.exe_extracted/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+profiles/*/UserData/Crashpad/
+profiles/*/UserData/CrashpadMetrics*
