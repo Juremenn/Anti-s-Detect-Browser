@@ -43,3 +43,4 @@ for rel, (fnd, strs) in sorted(results.items()):
     print(f"=== {rel} ===")
     print(f"  Vectors: {fnd}")
     print(f"  Samples: {strs[:10]}\n")
+
