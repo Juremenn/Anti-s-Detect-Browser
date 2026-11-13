@@ -73,3 +73,4 @@ Laporan akhir hasil reverse engineering akan mencakup:
 2. **Katalog Command-Line Flags / Configuration Schema**: Parameter profil yang digunakan untuk mengontrol engine.
 3. **Peta Teknis Patch Engine (Vektor per Vektor)**: Rincian teknis modifikasi kode pada Canvas, WebGL, Audio, Hardware, dan TLS.
 4. **Ringkasan Temuan**: Penilaian arsitektur implementasi anti-detect (deterministik berbasis seed profil vs. noise acak).
+

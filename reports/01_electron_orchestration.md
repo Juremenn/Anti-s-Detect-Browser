@@ -86,3 +86,4 @@ Dikelola melalui schema model pydantic pada `octo.fastapi.schemas` dan `octo.fas
 Pada modul `octo.proxy.p0f`:
 - Octo Browser memeriksa fingerprint TCP/IP paket SYN (analisis p0f: MTU, TCP Window Size, Window Scale, MSS, dan TCP Options ordering).
 - Memastikan bahwa jika profil diset sebagai "macOS" atau "Windows", karakteristik TCP stack pada proxy exit node selaras dengan OS yang diemulasikan (`syn_mode: profile_based`).
+
