@@ -1,5 +1,3 @@
-<div id="top"></div>
-
 <div align="center">
   <img src="frontend/public/assets/logo.png" alt="Anti's Detect Browser Logo" width="112" height="112" />
 
@@ -7,16 +5,34 @@
 
   **Aplikasi Manajemen Browser Anti-Detect Multi-Profil & Mesin Isolasi Fingerprint Deterministik**
 
-  **Language / Bahasa:** [**English** (Default & Side-by-Side)](README.md) | [**Bahasa Indonesia**](README.id.md)
+  <p>
+    <a href="README.md"><img src="https://img.shields.io/badge/Language-English-1E293B?style=for-the-badge" alt="English" /></a>
+    <a href="README.id.md"><img src="https://img.shields.io/badge/Bahasa-Indonesia%20(Aktif)-4F46E5?style=for-the-badge" alt="Bahasa Indonesia" /></a>
+  </p>
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-  [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6.svg)](#kebutuhan-sistem)
-  [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](#kebutuhan-sistem)
-  [![Auth](https://img.shields.io/badge/Auth-Google%20OAuth%202.0-4285F4.svg)](#cara-penggunaan-cepat-desktop-ui)
+  [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6.svg)](#3-kebutuhan-sistem)
+  [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](#3-kebutuhan-sistem)
+  [![Auth](https://img.shields.io/badge/Auth-Google%20OAuth%202.0-4285F4.svg)](#4-cara-penggunaan-cepat-desktop-ui)
   [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Saweria-F9A825.svg)](https://saweria.co/juremenn)
 
   ☕ **Dukung proyek ini:** [Buy me a coffee di Saweria (https://saweria.co/juremenn)](https://saweria.co/juremenn)
 </div>
+
+---
+
+## Daftar Isi
+
+1. [Ringkasan](#1-ringkasan)
+2. [Fitur Utama](#2-fitur-utama)
+3. [Kebutuhan Sistem](#3-kebutuhan-sistem)
+4. [Cara Penggunaan Cepat (Desktop UI)](#4-cara-penggunaan-cepat-desktop-ui)
+5. [Penggunaan via Terminal (CLI)](#5-penggunaan-via-terminal-cli)
+6. [Ekstensi Chromium Mandiri](#6-ekstensi-chromium-mandiri)
+7. [Struktur Proyek](#7-struktur-proyek)
+8. [Integrasi Otomasi Playwright](#8-integrasi-otomasi-playwright)
+9. [Dukungan & Donasi](#9-dukungan--donasi)
+10. [Lisensi](#10-lisensi)
 
 ---
 
@@ -38,25 +54,25 @@ Dengan memadukan emulasi runtime *Chrome DevTools Protocol* (CDP) dan injeksi ek
   - **Canvas**: Perturbasi sub-piksel deterministik pada `toDataURL`, `toBlob`, dan `getImageData` tanpa distorsi visual.
   - **WebGL & GPU**: Mengubah `UNMASKED_VENDOR_WEBGL` (`0x9245`) dan `UNMASKED_RENDERER_WEBGL` (`0x9246`) sesuai profil GPU NVIDIA GeForce RTX, AMD Radeon, Intel Iris/Arc, dan Apple Silicon M1/M2/M3.
   - **AudioContext**: Mikro-perturbasi deterministik pada spektrum frekuensi `AnalyserNode` dan buffer `AudioBuffer`.
-  - **Navigator, Client Hints & Layar**: Menyelaraskan `hardwareConcurrency`, `deviceMemory` (maksimal 8 GB sesuai spesifikasi Chromium), `platform`, header `Sec-CH-UA`, serta dimensi layar yang memperhitungkan taskbar.
-  - **WebRTC, Geolokasi, Zona Waktu & Geometri DOM**: Mendukung resolusi otomatis mengikuti lokasi IP proxy (`Based on proxy`) maupun manual, ditambah perturbasi `getBoundingClientRect` dan proteksi pemindaian port lokal.
-- **100 Preset Perangkat Bawaan**: Mencakup 35 laptop/desktop Windows, 25 perangkat macOS, 20 perangkat iOS, dan 20 perangkat Android (`stealth_browser/data/presets.json`).
+  - **Navigator, Client Hints & Layar**: Menyelaraskan `navigator.hardwareConcurrency`, `navigator.deviceMemory` (dibatasi maksimal 8 GB sesuai spesifikasi resmi Chromium), `navigator.platform`, header `Sec-CH-UA`, serta dimensi layar yang memperhitungkan ukuran taskbar.
+  - **WebRTC, Geolokasi, Zona Waktu & Geometri DOM**: Mendukung pengaturan otomatis mengikuti lokasi IP proxy (`Based on proxy`) maupun manual, dilengkapi perturbasi `getBoundingClientRect` dan proteksi pemindaian port lokal.
+- **100 Preset Perangkat Bawaan**: Dilengkapi 100 preset perangkat tervalidasi (`stealth_browser/data/presets.json`) yang mencakup 35 laptop/desktop Windows, 25 perangkat macOS, 20 perangkat iOS, dan 20 perangkat Android.
 - **Aplikasi Desktop Native & Dashboard React**:
-  - Berjalan sebagai jendela desktop Windows native via `pywebview` (Edge WebView2) dengan server API lokal di `127.0.0.1:58888`.
-  - Kelola profil dengan folder, tag, label warna, catatan, pencarian, *Trash Bin*, pemeriksaan konsistensi fingerprint, tes koneksi proxy (`HTTP`, `HTTPS`, `SOCKS4`, `SOCKS5`), manajemen ekstensi `.crx` / *unpacked*, serta tema terang dan gelap (*Light/Dark Mode*).
-- **Deteksi Mesin Browser Otomatis**: Mengenali instalasi Playwright Chromium, Brave Browser, Google Chrome, dan Microsoft Edge secara otomatis.
+  - Berjalan sebagai jendela aplikasi desktop Windows native menggunakan `pywebview` (Edge WebView2) dengan server API lokal di `127.0.0.1:58888`.
+  - Mendukung pengelompokan folder, tag, label warna, catatan, pencarian, *Trash Bin* (pemulihan profil terhapus), pemeriksaan konsistensi fingerprint, pengujian koneksi proxy (`HTTP`, `HTTPS`, `SOCKS4`, `SOCKS5`), manajemen ekstensi `.crx` / *unpacked*, serta tema terang dan gelap (*Light/Dark Mode*).
+- **Deteksi Mesin Browser Otomatis**: Mengenali instalasi Playwright Chromium, Brave Browser, Google Chrome, dan Microsoft Edge di sistem secara otomatis.
 
 ---
 
 ## 3. Kebutuhan Sistem
 
-- **OS**: Windows 10 atau Windows 11 (disarankan 64-bit)
+- **Sistem Operasi**: Windows 10 atau Windows 11 (disarankan 64-bit)
 - **Python**: Python 3.10 atau lebih baru
 - **Koneksi Internet**: Diperlukan untuk autentikasi Login Google OAuth 2.0 dan pengecekan proxy/browsing
-- **Mesin Browser**: Google Chrome, Brave, Microsoft Edge, atau Playwright Chromium
+- **Mesin Browser**: Minimal satu browser berbasis Chromium terinstal (Google Chrome, Brave, Microsoft Edge, atau Playwright Chromium)
 - **Paket Python**:
-  - `pywebview` (shell jendela aplikasi desktop native)
-  - `playwright` *(opsional, untuk script otomasi)*
+  - `pywebview` (untuk jendela aplikasi desktop native)
+  - `playwright` *(opsional, hanya diperlukan jika menggunakan script otomasi Playwright)*
 
 ```bash
 pip install pywebview playwright
@@ -73,11 +89,14 @@ pip install pywebview playwright
 ### Cara 2: Menjalankan lewat Terminal
 ```bash
 python desktop_app.pyw
-# atau jalankan server lokal secara langsung:
+```
+Atau jalankan server UI lokal secara langsung (terbuka di `http://127.0.0.1:58888`):
+```bash
 python web_ui_server.py
 ```
 
 ### Membangun Ulang Frontend UI (Opsional)
+Jika Anda mengubah kode di dalam `frontend/src/`:
 ```bash
 cd frontend
 npm install
@@ -88,36 +107,42 @@ npm run build
 
 ## 5. Penggunaan via Terminal (CLI)
 
-Kelola dan jalankan profil langsung dari terminal menggunakan `run_stealth.py`:
+Gunakan `run_stealth.py` untuk mengelola dan menjalankan profil langsung dari terminal:
 
 ```bash
 # 1. Melihat daftar profil lokal
 python run_stealth.py --list
 
 # 2. Membuat profil baru (dengan opsi proxy)
-python run_stealth.py --create --profile toko_1 --preset 0
-python run_stealth.py --create --profile akun_us_2 --preset 1 --proxy "http://user:pass@host:8080"
+python run_stealth.py --create --profile toko_online_1 --preset 0
+python run_stealth.py --create --profile akun_us_2 --preset 1 --proxy "http://user:pass@proxy.example.com:8080"
 
 # 3. Menjalankan profil & uji fingerprint
-python run_stealth.py --profile toko_1 --test
-python run_stealth.py --profile toko_1 --url "https://iphey.com"
+python run_stealth.py --profile toko_online_1 --test
+python run_stealth.py --profile toko_online_1 --url "https://iphey.com"
 
 # 4. Menghapus profil
-python run_stealth.py --delete toko_1
+python run_stealth.py --delete toko_online_1
 ```
 
 ---
 
 ## 6. Ekstensi Chromium Mandiri
 
-Tersedia ekstensi Manifest V3 mandiri di folder `extensions/anti-detect-browser/` serta paket `.crx` di `Extension/anti-detect-browser.crx`:
-- Popup **DevicePicker** dengan pencarian dan 100 preset perangkat.
-- Penyamaran header `User-Agent` dan `Sec-CH-UA*` Client Hints secara dinamis via `declarativeNetRequest`.
-- Injeksi *main-world* (`spoof-engine.js`) untuk Canvas, WebGL, AudioContext, Navigator, dan geometri layar.
+Repositori ini menyertakan ekstensi Manifest V3 mandiri di dalam folder `extensions/anti-detect-browser/` serta file paket `.crx` di `Extension/anti-detect-browser.crx`:
 
-**Cara Memasang (Load Unpacked):**
-1. Buka `chrome://extensions/` dan aktifkan **Developer mode**.
+- Popup **DevicePicker** dengan kolom pencarian dan 100 preset perangkat (Windows, macOS, iOS, Android).
+- Penyamaran header `User-Agent` dan `Sec-CH-UA*` Client Hints secara dinamis menggunakan `declarativeNetRequest`.
+- Injeksi *main-world* (`spoof-engine.js`) untuk memanipulasi Canvas, WebGL, AudioContext, Navigator, dan geometri layar.
+
+### Cara Memasang (Load Unpacked)
+1. Buka `chrome://extensions/` di Chrome, Brave, atau Edge dan aktifkan **Developer mode**.
 2. Klik **Load unpacked** lalu pilih folder `extensions/anti-detect-browser`.
+
+Untuk membangun ulang file `.crx`:
+```bash
+python scripts/build-extension.py
+```
 
 ---
 
@@ -125,35 +150,35 @@ Tersedia ekstensi Manifest V3 mandiri di folder `extensions/anti-detect-browser/
 
 ```text
 Anti-s-Detect-Browser/
-├── Buka_Anti_Detect_Browser.bat
-├── AntiDetectBrowser.pyw
-├── desktop_app.pyw
-├── web_ui_server.py
-├── run_stealth.py
-├── selfcheck.html
-├── app.ico
-├── stealth_browser/
-│   ├── profile_manager.py
-│   ├── fingerprint.py
-│   ├── stealth_hooks.py
-│   ├── cdp_apply.py
-│   ├── launcher.py
-│   ├── consistency.py
-│   ├── proxy_utils.py
-│   └── data/presets.json
-├── extensions/anti-detect-browser/
-├── Extension/anti-detect-browser.crx
-├── frontend/
-├── web_ui/
-├── scripts/
-└── tests/
+├── Buka_Anti_Detect_Browser.bat             # Peluncur 1-klik aplikasi desktop native
+├── AntiDetectBrowser.pyw                    # Entrypoint aplikasi desktop tanpa jendela konsol
+├── desktop_app.pyw                          # Shell native pywebview (Edge WebView2)
+├── web_ui_server.py                         # Server API HTTP lokal (127.0.0.1:58888)
+├── run_stealth.py                           # CLI untuk manajemen profil & otomasi terminal
+├── selfcheck.html                           # Halaman lokal untuk verifikasi mandiri fingerprint
+├── app.ico                                  # Ikon aplikasi Windows multi-resolusi
+├── stealth_browser/                         # Paket inti mesin anti-detect Python
+│   ├── profile_manager.py                   # CRUD profil, validasi, folder, tag, trash bin
+│   ├── fingerprint.py                       # PRNG deterministik Mulberry32 & builder UA-CH
+│   ├── stealth_hooks.py                     # Generator injeksi JS untuk 5 vektor fingerprint
+│   ├── cdp_apply.py                         # Emulasi runtime Chrome DevTools Protocol (CDP)
+│   ├── launcher.py                          # Deteksi browser, alokasi port & peluncur proses
+│   ├── consistency.py                       # Evaluator konsistensi fingerprint profil
+│   ├── proxy_utils.py                       # Validasi proxy, tes koneksi & pembacaan GeoIP
+│   └── data/presets.json                    # 100 preset perangkat berkategori
+├── extensions/anti-detect-browser/          # Kode sumber ekstensi mandiri Manifest V3
+├── Extension/anti-detect-browser.crx        # Paket ekstensi CRX siap pasang
+├── frontend/                                # Kode sumber dashboard UI (React 19 + TypeScript + Vite)
+├── web_ui/                                  # Hasil kompilasi frontend yang disajikan web_ui_server.py
+├── scripts/                                 # Script build ikon, preset, ekstensi & aplikasi desktop
+└── tests/                                   # Pengujian unit & integrasi (API, CRX, profil)
 ```
 
 ---
 
 ## 8. Integrasi Otomasi Playwright
 
-Gunakan `ProfileManager` dan `generate_stealth_script` di dalam script Python Playwright:
+Anda dapat mengintegrasikan `ProfileManager` dan `generate_stealth_script` ke dalam script Python Playwright:
 
 ```python
 import asyncio
@@ -163,11 +188,11 @@ from stealth_browser.stealth_hooks import generate_stealth_script
 
 async def main():
     mgr = ProfileManager()
-    profile = mgr.get_profile("toko_1")
+    profile = mgr.get_profile("toko_online_1")
     stealth_js = generate_stealth_script(profile)
 
     async with async_playwright() as p:
-        ctx = await p.chromium.launch_persistent_context(
+        context = await p.chromium.launch_persistent_context(
             user_data_dir=profile["user_data_dir"],
             headless=False,
             args=[
@@ -175,11 +200,12 @@ async def main():
                 f"--user-agent={profile['user_agent']}",
             ],
         )
-        await ctx.add_init_script(stealth_js)
-        page = await ctx.new_page()
+        await context.add_init_script(stealth_js)
+
+        page = await context.new_page()
         await page.goto("https://browserleaks.com/canvas")
         await asyncio.sleep(10)
-        await ctx.close()
+        await context.close()
 
 asyncio.run(main())
 ```
