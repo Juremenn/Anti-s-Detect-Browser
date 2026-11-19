@@ -1,14 +1,19 @@
 @echo off
-title Octo Browser Offline Manager
 cd /d "%~dp0"
-echo =========================================================
-echo    OCTO BROWSER - OFFLINE EDITION (NO CLOUD / NO LOGIN)
-echo =========================================================
-echo Membuka antarmuka desktop Octo Browser...
-python web_ui_server.py
-if errorlevel 1 (
-    echo.
-    echo [ERROR] Server UI terhenti.
-    pause
+
+:: Prefer pythonw for silent native launch without console window
+where pythonw >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    start "" pythonw desktop_app.pyw
+    exit /b 0
 )
 
+where python >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    start "" python desktop_app.pyw
+    exit /b 0
+)
+
+echo [ERROR] Python tidak ditemukan di sistem. Pastikan Python sudah terinstal dan ada di PATH.
+pause
+exit /b 1

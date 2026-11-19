@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Globe, Plus, Trash2 } from 'lucide-react';
 import { EmptyState } from '../components/EmptyState';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { t } from '../i18n';
 import { AddProxyModal } from '../modals/AddProxyModal';
 import { ProxyItem } from '../types';
@@ -17,6 +18,7 @@ export function ProxiesView({
   onAddProxy,
   onDeleteProxy,
 }: ProxiesViewProps) {
+  const { confirm } = useConfirm();
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
@@ -43,7 +45,7 @@ export function ProxiesView({
               fontSize: 11,
               fontWeight: 500,
               color: 'var(--text-tertiary)',
-              backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              backgroundColor: 'var(--bg-raised)',
               padding: '1px 6px',
               borderRadius: 4,
               fontFamily: 'var(--font-mono)',
@@ -151,8 +153,15 @@ export function ProxiesView({
                       <button
                         className="btn-icon danger"
                         title={t.proxies.delete}
-                        onClick={() => {
-                          if (confirm(`Delete proxy '${p.title || p.url}'?`)) {
+                        onClick={async () => {
+                          const ok = await confirm({
+                            title: 'Delete Proxy',
+                            description: `Are you sure you want to delete proxy "${p.title || p.url}"?`,
+                            confirmLabel: 'Delete Proxy',
+                            cancelLabel: 'Cancel',
+                            variant: 'danger',
+                          });
+                          if (ok) {
                             onDeleteProxy(p.id);
                           }
                         }}

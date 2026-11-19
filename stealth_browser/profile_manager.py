@@ -90,7 +90,10 @@ def _clean_typed_fields(fields: dict) -> dict:
                 "Argumen tambahan tidak boleh memuat: " + ", ".join(dangerous))
         out["extra_args"] = args
 
-    for key in ("canvas_noise", "webgl_noise", "audio_noise", "clientrects_noise", "dnt"):
+    for key in (
+        "canvas_noise", "webgl_noise", "audio_noise", "clientrects_noise",
+        "font_noise", "port_scan_protection", "battery_spoof", "dnt",
+    ):
         if key in fields:
             out[key] = bool(fields[key])
     for key in ("media_mic", "media_cam", "media_spk"):
@@ -657,7 +660,8 @@ class ProfileManager:
         "hardware_concurrency", "device_memory", "screen_width", "screen_height",
         "color_depth", "device_pixel_ratio", "languages", "user_agent",
         "webrtc_mode", "timezone_mode", "locale_mode", "geo_mode", "timezone", "locale",
-        "canvas_noise", "webgl_noise", "audio_noise", "clientrects_noise", "dnt",
+        "canvas_noise", "webgl_noise", "audio_noise", "clientrects_noise",
+        "font_noise", "port_scan_protection", "battery_spoof", "dnt",
         "media_mic", "media_cam", "media_spk", "on_close", "start_urls", "extra_args",
         "proxy", "folder", "tags", "notes", "color", "diversified", "custom",
     )

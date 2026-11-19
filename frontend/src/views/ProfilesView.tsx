@@ -479,7 +479,7 @@ export function ProfilesView({
                       )}
                     </td>
 
-                    {/* Fingerprint Spec Single Line with Tooltip */}
+                    {/* Fingerprint Spec + Active Anti-Detect Shields */}
                     <td
                       style={{
                         padding: '0 12px',
@@ -489,16 +489,43 @@ export function ProfilesView({
                       }}
                       title={p.webgl_renderer || 'Standard Profile'}
                     >
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <Monitor size={14} strokeWidth={1.5} color="var(--text-secondary)" />
-                        <span
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <Monitor size={14} strokeWidth={1.75} color="var(--accent)" />
+                          <span
+                            style={{
+                              fontSize: 'var(--text-label)',
+                              fontWeight: 500,
+                              color: 'var(--text-primary)',
+                            }}
+                          >
+                            {specSummary}
+                          </span>
+                        </div>
+                        <div
                           style={{
-                            fontSize: 'var(--text-label)',
-                            color: 'var(--text-secondary)',
+                            fontSize: 11,
+                            color: 'var(--text-tertiary)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
                           }}
                         >
-                          {specSummary}
-                        </span>
+                          <span style={{ color: 'var(--status-success)', fontWeight: 500 }}>
+                            Anti-Detect:
+                          </span>
+                          <span>
+                            {[
+                              p.canvas_noise !== false && 'Canvas',
+                              p.webgl_noise !== false && 'WebGL',
+                              p.audio_noise !== false && 'Audio',
+                              p.font_noise !== false && 'Fonts',
+                              p.timezone_mode !== 'system' && 'IP-TZ',
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        </div>
                       </div>
                     </td>
 

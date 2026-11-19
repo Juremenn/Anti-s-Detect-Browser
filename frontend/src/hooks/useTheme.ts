@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ResolvedTheme, ThemeMode } from '../types';
 
-const STORAGE_KEY = 'octo_theme_mode';
+const STORAGE_KEY = 'octo_theme_mode_v2';
 
 export function useTheme() {
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => {
@@ -9,17 +9,16 @@ export function useTheme() {
     if (saved === 'light' || saved === 'dark' || saved === 'system') {
       return saved;
     }
-    return 'dark';
+    return 'light';
   });
 
   const [systemDark, setSystemDark] = useState<boolean>(() => {
     if (typeof window !== 'undefined' && window.matchMedia) {
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
-    return true;
+    return false;
   });
 
-  // Listen to OS theme changes if user selected 'system'
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');

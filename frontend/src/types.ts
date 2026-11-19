@@ -33,6 +33,9 @@ export interface Profile {
   canvas_noise?: boolean;
   webgl_noise?: boolean;
   clientrects_noise?: boolean;
+  font_noise?: boolean;
+  port_scan_protection?: boolean;
+  battery_spoof?: boolean;
   dnt?: boolean;
   media_mic?: number;
   media_cam?: number;
@@ -201,3 +204,40 @@ export interface ToastMessage {
 
 export type SortField = 'name' | 'status' | 'last_used' | 'proxy';
 export type SortDirection = 'asc' | 'desc';
+
+export interface ExtensionConfig {
+  selected_preset_id: string;
+  modules: {
+    navigator?: boolean;
+    webgl?: boolean;
+    canvas?: boolean;
+    audio?: boolean;
+    screen?: boolean;
+    webrtc?: boolean;
+    timezone_sync?: boolean;
+    geolocation_sync?: boolean;
+    client_hints?: boolean;
+    font_filter?: boolean;
+    client_rects?: boolean;
+    iframe_stealth?: boolean;
+  };
+  proxy_rotation_url?: string;
+  auto_rotate?: boolean;
+}
+
+export interface Extension {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  enabled: boolean;
+  source_type: 'crx' | 'unpacked';
+  path: string;
+  manifest_version?: number;
+  permissions?: string[];
+  icon_url?: string;
+  status?: 'ready' | 'missing' | 'error';
+  configurable?: boolean;
+  builtIn?: boolean;
+  config?: ExtensionConfig;
+}

@@ -1,4 +1,6 @@
-import { Monitor } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Laptop, Monitor, Search, Smartphone, Tablet, X } from 'lucide-react';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { t } from '../i18n';
 import { Preset } from '../types';
 import { parseGpuName } from '../utils/formatters';
@@ -9,9 +11,42 @@ interface TemplatesViewProps {
 }
 
 export function TemplatesView({ presets, onApplyPreset }: TemplatesViewProps) {
+  const [osFilter, setOsFilter] = useState<'all' | 'win' | 'mac' | 'ios' | 'android'>('all');
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase().trim();
+    return presets
+      .map((preset, idx) => ({ preset, idx }))
+      .filter(({ preset }) => {
+        if (osFilter !== 'all' && preset.os && preset.os !== osFilter) {
+          return false;
+        }
+        if (!q) return true;
+        return (
+          (preset.label || '').toLowerCase().includes(q) ||
+          (preset.name || '').toLowerCase().includes(q) ||
+          (preset.gpu_renderer || '').toLowerCase().includes(q) ||
+          (preset.platform || '').toLowerCase().includes(q)
+        );
+      });
+  }, [presets, osFilter, query]);
+
+  function getCategoryIcon(cat?: string) {
+    switch (cat) {
+      case 'mobile':
+        return <Smartphone size={15} strokeWidth={1.5} color="var(--accent)" style={{ flexShrink: 0 }} />;
+      case 'tablet':
+        return <Tablet size={15} strokeWidth={1.5} color="var(--accent)" style={{ flexShrink: 0 }} />;
+      case 'desktop':
+        return <Monitor size={15} strokeWidth={1.5} color="var(--accent)" style={{ flexShrink: 0 }} />;
+      default:
+        return <Laptop size={15} strokeWidth={1.5} color="var(--accent)" style={{ flexShrink: 0 }} />;
+    }
+  }
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Header */}
       <header
         style={{
           height: 48,
@@ -22,6 +57,7 @@ export function TemplatesView({ presets, onApplyPreset }: TemplatesViewProps) {
           justifyContent: 'space-between',
           padding: '0 16px',
           flexShrink: 0,
+          gap: 12,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -33,33 +69,93 @@ export function TemplatesView({ presets, onApplyPreset }: TemplatesViewProps) {
               fontSize: 11,
               fontWeight: 500,
               color: 'var(--text-tertiary)',
-              backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              backgroundColor: 'var(--bg-raised)',
               padding: '1px 6px',
               borderRadius: 4,
               fontFamily: 'var(--font-mono)',
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            {presets.length}
+            {filtered.length} / {presets.length}
           </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: 220 }}>
+            <Search
+              size={13}
+              strokeWidth={1.5}
+              color="var(--text-tertiary)"
+              style={{ position: 'absolute', left: 8, pointerEvents: 'none' }}
+            />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Cari GPU, OS, resolusi..."
+              style={{
+                width: '100%',
+                height: 'var(--control-height-sm)',
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-control)',
+                paddingLeft: 26,
+                paddingRight: query ? 24 : 8,
+                fontSize: 'var(--text-label)',
+                color: 'var(--text-primary)',
+                outline: 'none',
+              }}
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                style={{
+                  position: 'absolute',
+                  right: 6,
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-tertiary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: 2,
+                }}
+              >
+                <X size={12} strokeWidth={1.5} />
+              </button>
+            )}
+          </div>
+
+          <SegmentedControl
+            size="sm"
+            value={osFilter}
+            onChange={(v) => setOsFilter(v as typeof osFilter)}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'win', label: 'Windows' },
+              { value: 'mac', label: 'macOS' },
+              { value: 'ios', label: 'iOS' },
+              { value: 'android', label: 'Android' },
+            ]}
+          />
         </div>
       </header>
 
-      {/* Grid List */}
       <div style={{ padding: '16px', flex: 1, overflowY: 'auto' }}>
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))',
             gap: 12,
           }}
         >
-          {presets.map((preset, idx) => {
-            const gpuClean = parseGpuName(preset.gpu_renderer);
+          {filtered.map(({ preset, idx }) => {
+            const gpuClean = parseGpuName(preset.gpu_renderer || preset.webgl_renderer);
 
             return (
               <div
-                key={idx}
+                key={preset.id || idx}
                 style={{
                   backgroundColor: 'var(--bg-surface)',
                   border: '1px solid var(--border)',
@@ -71,16 +167,26 @@ export function TemplatesView({ presets, onApplyPreset }: TemplatesViewProps) {
                   transition: 'border-color 140ms ease-out',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--text-tertiary)';
+                  e.currentTarget.style.borderColor = 'var(--border-strong)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.borderColor = 'var(--border)';
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Monitor size={15} strokeWidth={1.5} color="var(--text-secondary)" />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    {getCategoryIcon(preset.category)}
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={preset.label}
+                    >
                       {preset.label}
                     </span>
                   </div>
@@ -90,6 +196,7 @@ export function TemplatesView({ presets, onApplyPreset }: TemplatesViewProps) {
                       fontWeight: 500,
                       color: 'var(--text-tertiary)',
                       fontFamily: 'var(--font-mono)',
+                      flexShrink: 0,
                     }}
                   >
                     #{idx + 1}
@@ -107,11 +214,17 @@ export function TemplatesView({ presets, onApplyPreset }: TemplatesViewProps) {
                     gap: 4,
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <span style={{ color: 'var(--text-tertiary)' }}>GPU:</span>
                     <span
-                      style={{ color: 'var(--text-primary)', fontWeight: 500 }}
-                      title={preset.gpu_renderer}
+                      style={{
+                        color: 'var(--text-primary)',
+                        fontWeight: 500,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={preset.gpu_renderer || preset.webgl_renderer}
                     >
                       {gpuClean}
                     </span>
@@ -126,13 +239,15 @@ export function TemplatesView({ presets, onApplyPreset }: TemplatesViewProps) {
                     <span style={{ color: 'var(--text-tertiary)' }}>Screen:</span>
                     <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
                       {preset.screen ? `${preset.screen[0]} × ${preset.screen[1]}` : '1920 × 1080'}
+                      {preset.device_pixel_ratio ? ` @${preset.device_pixel_ratio}x` : ''}
                     </span>
                   </div>
                 </div>
 
                 <button
+                  type="button"
                   className="btn btn-ghost"
-                  style={{ width: '100%', height: 28, fontSize: 12 }}
+                  style={{ width: '100%', height: 28, fontSize: 12, border: '1px solid var(--border)' }}
                   onClick={() => onApplyPreset(idx, preset)}
                 >
                   {t.templates.useTemplate}

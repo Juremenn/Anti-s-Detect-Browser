@@ -3,6 +3,7 @@ import { api } from './api';
 import { Sidebar } from './components/Sidebar';
 import { ToastContainer } from './components/Toast';
 import { TopBar } from './components/TopBar';
+import { ConfirmProvider, useConfirm } from './components/ui/ConfirmDialog';
 import { useTheme } from './hooks/useTheme';
 import { t } from './i18n';
 import { ProfileEditDialog } from './modals/ProfileEditDialog';
@@ -23,7 +24,8 @@ import { SettingsView } from './views/SettingsView';
 import { TemplatesView } from './views/TemplatesView';
 import { TrashView } from './views/TrashView';
 
-export default function App() {
+function AppContent() {
+  const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState<TabId>('profiles');
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
@@ -38,6 +40,7 @@ export default function App() {
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [initialPresetIdx, setInitialPresetIdx] = useState<number | null>(null);
   const [editFpName, setEditFpName] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -321,7 +324,14 @@ export default function App() {
   async function handleBulkTrash() {
     if (selectedProfiles.size === 0) return;
     const list = Array.from(selectedProfiles);
-    if (!confirm(t.bulk.confirmTrashTitle(list.length))) return;
+    const ok = await confirm({
+      title: 'Move Profiles to Trash',
+      description: t.bulk.confirmTrashTitle(list.length),
+      confirmLabel: 'Move to Trash',
+      cancelLabel: 'Cancel',
+      variant: 'danger',
+    });
+    if (!ok) return;
     for (const name of list) {
       try {
         await api.deleteProfile(name);
@@ -462,6 +472,7 @@ export default function App() {
         profilesCount={profiles.length}
         trashCount={trashItems.length}
         proxiesCount={proxies.length}
+        extensionsCount={1}
         activeEngine={activeEngine}
         runningCount={runningCount}
       />
@@ -547,13 +558,14 @@ export default function App() {
         {activeTab === 'templates' && (
           <TemplatesView
             presets={presets}
-            onApplyPreset={() => {
+            onApplyPreset={(presetIndex) => {
+              setInitialPresetIdx(presetIndex);
               setCreateModalOpen(true);
             }}
           />
         )}
 
-        {activeTab === 'extensions' && <ExtensionsView />}
+        {activeTab === 'extensions' && <ExtensionsView onToast={addToast} />}
 
         {activeTab === 'trash' && (
           <TrashView
@@ -578,9 +590,11 @@ export default function App() {
         isOpen={createModalOpen || editFpName !== null}
         onClose={() => {
           setCreateModalOpen(false);
+          setInitialPresetIdx(null);
           setEditFpName(null);
         }}
         presets={presets}
+        initialPresetIndex={initialPresetIdx}
         proxies={proxies}
         existingTags={allTags}
         folders={folders}
@@ -595,5 +609,13 @@ export default function App() {
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ConfirmProvider>
+      <AppContent />
+    </ConfirmProvider>
   );
 }

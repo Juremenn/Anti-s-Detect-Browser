@@ -16,7 +16,7 @@ export function Modal({
   onClose,
   children,
   footer,
-  maxWidth = 480,
+  maxWidth = 520,
 }: ModalProps) {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -35,13 +35,13 @@ export function Modal({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        backdropFilter: 'blur(2px)',
+        backgroundColor: 'rgba(15, 23, 42, 0.48)',
+        backdropFilter: 'blur(3px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 1000,
-        animation: 'fadeIn 120ms ease-out',
+        padding: '20px',
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -51,10 +51,11 @@ export function Modal({
         style={{
           backgroundColor: 'var(--bg-surface)',
           border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-panel)',
-          width: '92%',
+          borderRadius: 'var(--radius-dialog)',
+          width: '100%',
           maxWidth,
-          boxShadow: 'var(--shadow-popover)',
+          maxHeight: '90vh',
+          boxShadow: 'var(--shadow-dialog)',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
@@ -63,36 +64,38 @@ export function Modal({
         {/* Header */}
         <div
           style={{
-            height: 44,
-            padding: '0 16px',
+            height: 54,
+            padding: '0 20px',
             borderBottom: '1px solid var(--border)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexShrink: 0,
+            backgroundColor: 'var(--bg-surface)',
           }}
         >
           <span
             style={{
-              fontSize: 13,
+              fontSize: 15,
               fontWeight: 600,
               color: 'var(--text-primary)',
-              letterSpacing: -0.1,
+              letterSpacing: '-0.02em',
             }}
           >
             {title}
           </span>
           <button
+            type="button"
             className="btn-icon"
             onClick={onClose}
-            style={{ width: 24, height: 24 }}
+            style={{ width: 28, height: 28 }}
           >
-            <X size={14} strokeWidth={1.5} />
+            <X size={15} strokeWidth={1.75} />
           </button>
         </div>
 
         {/* Content */}
-        <div style={{ padding: '16px', overflowY: 'auto', maxHeight: '75vh' }}>
+        <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1 }}>
           {children}
         </div>
 
@@ -100,14 +103,14 @@ export function Modal({
         {footer && (
           <div
             style={{
-              height: 48,
-              padding: '0 16px',
+              height: 58,
+              padding: '0 20px',
               borderTop: '1px solid var(--border)',
               backgroundColor: 'var(--bg-base)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'flex-end',
-              gap: 8,
+              gap: 10,
               flexShrink: 0,
             }}
           >

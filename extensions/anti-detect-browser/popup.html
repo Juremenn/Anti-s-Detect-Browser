@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anti-Detect Engine</title>
+  <style>
+    :root {
+      --bg: #F8FAFC;
+      --card-bg: #FFFFFF;
+      --border: #E5E7EB;
+      --border-hover: #D1D5DB;
+      --text-primary: #0F172A;
+      --text-secondary: #64748B;
+      --text-muted: #94A3B8;
+      --accent: #4F46E5;
+      --accent-hover: #4338CA;
+      --status-emerald: #10B981;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 360px;
+      background-color: var(--bg);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 14px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-primary);
+    }
+
+    .brand-title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+      color: var(--text-primary);
+    }
+
+    .version-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-left: 4px;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--status-emerald);
+    }
+
+    /* Card */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 10px;
+      transition: border-color 150ms ease;
+    }
+
+    .card:hover {
+      border-color: var(--border-hover);
+    }
+
+    .card-label {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Select */
+    select {
+      width: 100%;
+      height: 32px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--card-bg);
+      color: var(--text-primary);
+      font-size: 12px;
+      font-family: var(--font-sans);
+      outline: none;
+      cursor: pointer;
+    }
+
+    select:focus {
+      border-color: var(--accent);
+    }
+
+    .meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .meta-val {
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    /* Network Row */
+    .network-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .ip-address {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .ip-geo {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    /* Button */
+    .btn {
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text-primary);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .btn:hover {
+      background: #F1F5F9;
+      border-color: var(--border-hover);
+    }
+
+    .btn-full {
+      width: 100%;
+      justify-content: center;
+      margin-top: 8px;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Toggles Grid */
+    .toggle-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .toggle-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      font-size: 11px;
+      color: var(--text-primary);
+    }
+
+    /* Minimal Switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 26px;
+      height: 14px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #CBD5E1;
+      border-radius: 14px;
+      transition: 150ms;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 10px;
+      width: 10px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      border-radius: 50%;
+      transition: 150ms;
+    }
+
+    input:checked + .slider {
+      background-color: var(--accent);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(12px);
+    }
+
+    /* Footer */
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .footer a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </div>
+      <span class="brand-title">Anti-Detect Engine</span>
+      <span class="version-tag">v1.0.0</span>
+    </div>
+    <div class="status-indicator">
+      <span class="dot"></span>
+      <span id="shieldStatus">Active</span>
+    </div>
+  </div>
+
+  <!-- Device Preset Card -->
+  <div class="card">
+    <div class="card-label">
+      <span>Device Identity</span>
+      <span id="presetCategory" style="font-family: var(--font-mono); font-size: 10px;">LAPTOP</span>
+    </div>
+    <select id="presetSelect"></select>
+    <div class="meta-row">
+      <span>Platform</span>
+      <span class="meta-val" id="platformVal">-</span>
+    </div>
+    <div class="meta-row">
+      <span>GPU Renderer</span>
+      <span class="meta-val" id="gpuVal" style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">-</span>
+    </div>
+  </div>
+
+  <!-- Network & IP Card -->
+  <div class="card">
+    <div class="card-label">
+      <span>Network & IP</span>
+      <span style="font-family: var(--font-mono); font-size: 10px; color: var(--status-emerald);">WEBRTC ISOLATED</span>
+    </div>
+    <div class="network-row">
+      <div>
+        <div class="ip-address" id="ipVal">Direct</div>
+        <div class="ip-geo" id="geoVal">Detecting network...</div>
+      </div>
+      <button class="btn" id="btnRotate">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+        </svg>
+        <span>Rotate IP</span>
+      </button>
+    </div>
+    <div class="meta-row">
+      <span>Timezone</span>
+      <span class="meta-val" id="tzVal">-</span>
+    </div>
+  </div>
+
+  <!-- Seed Card -->
+  <div class="card">
+    <div class="card-label">
+      <span>Deterministic Noise Seed</span>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span class="meta-val" id="seedVal" style="font-size: 13px;">8392819</span>
+      <button class="btn" id="btnRegenSeed">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+          <path d="M23 4v6h-6M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        <span>Regenerate</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Quick Module Toggles -->
+  <div class="card">
+    <div class="card-label">
+      <span>Stealth Modules</span>
+    </div>
+    <div class="toggle-grid">
+      <div class="toggle-item">
+        <span>WebGL</span>
+        <label class="switch">
+          <input type="checkbox" id="modWebGL" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="toggle-item">
+        <span>Canvas</span>
+        <label class="switch">
+          <input type="checkbox" id="modCanvas" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="toggle-item">
+        <span>Audio</span>
+        <label class="switch">
+          <input type="checkbox" id="modAudio" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="toggle-item">
+        <span>Screen</span>
+        <label class="switch">
+          <input type="checkbox" id="modScreen" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="toggle-item">
+        <span>Timezone</span>
+        <label class="switch">
+          <input type="checkbox" id="modTimezone" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="toggle-item">
+        <span>ClientRects</span>
+        <label class="switch">
+          <input type="checkbox" id="modClientRects" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>Manifest V3</span>
+    <a id="linkOptions">Full Settings</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

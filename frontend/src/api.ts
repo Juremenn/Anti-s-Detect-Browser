@@ -3,6 +3,7 @@ import {
   ConsistencyResult,
   CreateProfilePayload,
   CustomFingerprint,
+  Extension,
   ParsedProxy,
   Preset,
   Profile,
@@ -132,6 +133,50 @@ export const api = {
     request<{ status: string }>('/api/templates/delete', {
       method: 'POST',
       body: JSON.stringify({ id }),
+    }),
+
+  // Extensions
+  getExtensions: () => request<{ extensions: Extension[] }>('/api/extensions'),
+  toggleExtension: (id: string, enabled: boolean) =>
+    request<{ status: string; id: string; enabled: boolean }>('/api/extensions/toggle', {
+      method: 'POST',
+      body: JSON.stringify({ id, enabled }),
+    }),
+  installCrx: (fileName: string, fileDataB64: string) =>
+    request<{ status: string; extension: Extension }>('/api/extensions/install_crx', {
+      method: 'POST',
+      body: JSON.stringify({ file_name: fileName, file_data: fileDataB64 }),
+    }),
+  loadUnpacked: (path: string) =>
+    request<{ status: string; extension: Extension }>('/api/extensions/load_unpacked', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  reloadExtension: (id: string) =>
+    request<{ status: string; extension: Extension }>('/api/extensions/reload', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }),
+  removeExtension: (id: string) =>
+    request<{ status: string; id: string }>('/api/extensions/remove', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }),
+  openExtensionFolder: (id: string) =>
+    request<{ status: string }>('/api/extensions/open_folder', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }),
+  healthCheckExtensions: () =>
+    request<{ extensions: Extension[] }>('/api/extensions/health_check'),
+  getExtensionConfig: (id: string) =>
+    request<{ status: string; config: Record<string, any>; presets?: any[] }>(
+      `/api/extensions/config?id=${encodeURIComponent(id)}`
+    ),
+  saveExtensionConfig: (id: string, config: Record<string, any>) =>
+    request<{ status: string; config: Record<string, any> }>('/api/extensions/config', {
+      method: 'POST',
+      body: JSON.stringify({ id, config }),
     }),
 
   // Presets & Settings

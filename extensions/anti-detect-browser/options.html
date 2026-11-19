@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anti-Detect Engine Settings</title>
+  <style>
+    :root {
+      --bg: #F8FAFC;
+      --card-bg: #FFFFFF;
+      --border: #E5E7EB;
+      --border-hover: #D1D5DB;
+      --text-primary: #0F172A;
+      --text-secondary: #64748B;
+      --text-muted: #94A3B8;
+      --accent: #4F46E5;
+      --accent-hover: #4338CA;
+      --status-emerald: #10B981;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-primary);
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+
+    .section-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .section-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    input[type="text"], input[type="number"], select {
+      width: 100%;
+      height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--card-bg);
+      color: var(--text-primary);
+      font-size: 12px;
+      font-family: var(--font-sans);
+      outline: none;
+    }
+
+    input[type="text"]:focus, input[type="number"]:focus, select:focus {
+      border-color: var(--accent);
+    }
+
+    .input-mono {
+      font-family: var(--font-mono) !important;
+    }
+
+    .row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .btn {
+      height: 32px;
+      padding: 0 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 150ms ease;
+    }
+
+    .btn:hover {
+      background: #F1F5F9;
+      border-color: var(--border-hover);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #FFFFFF;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .toggle-row:last-child {
+      border-bottom: none;
+    }
+
+    .toggle-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .toggle-title {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .toggle-sub {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    /* Minimal Switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 28px;
+      height: 16px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #CBD5E1;
+      border-radius: 16px;
+      transition: 150ms;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 12px;
+      width: 12px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      border-radius: 50%;
+      transition: 150ms;
+    }
+
+    input:checked + .slider {
+      background-color: var(--accent);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(12px);
+    }
+
+    .toast-bar {
+      margin-top: 16px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: none;
+    }
+    .toast-success {
+      background: #ECFDF5;
+      border: 1px solid #A7F3D0;
+      color: #065F46;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <span class="brand-title">Anti-Detect Engine Settings</span>
+      </div>
+      <button class="btn btn-primary" id="btnSaveTop">Save Changes</button>
+    </div>
+
+    <!-- Proxy & Network Settings -->
+    <div class="section-card">
+      <div class="section-title">Proxy Routing and IP Rotation</div>
+      <div class="section-desc">Configure proxy server credentials and automatic IP rotation webhook.</div>
+
+      <div class="toggle-row" style="margin-bottom: 12px;">
+        <div class="toggle-info">
+          <span class="toggle-title">Enable Proxy Routing</span>
+          <span class="toggle-sub">Route browser traffic through configured proxy endpoint</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="proxyEnabled">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="row-2 form-group">
+        <div>
+          <label>Scheme</label>
+          <select id="proxyScheme">
+            <option value="http">HTTP</option>
+            <option value="https">HTTPS</option>
+            <option value="socks5">SOCKS5</option>
+          </select>
+        </div>
+        <div>
+          <label>Host / IP</label>
+          <input type="text" id="proxyHost" placeholder="proxy.example.com" class="input-mono">
+        </div>
+      </div>
+
+      <div class="row-2 form-group">
+        <div>
+          <label>Port</label>
+          <input type="number" id="proxyPort" placeholder="8080" class="input-mono">
+        </div>
+        <div>
+          <label>Username (Optional)</label>
+          <input type="text" id="proxyUser" class="input-mono">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Password (Optional)</label>
+        <input type="text" id="proxyPass" class="input-mono">
+      </div>
+
+      <div class="form-group">
+        <label>Rotation Webhook URL</label>
+        <input type="text" id="rotationUrl" placeholder="https://proxy-provider.com/api/change-ip?key=..." class="input-mono">
+      </div>
+    </div>
+
+    <!-- Seed & Hardware -->
+    <div class="section-card">
+      <div class="section-title">Hardware Identity Seed</div>
+      <div class="section-desc">Seeded noise ensures identical canvas, audio, and WebGL signatures across reloads.</div>
+
+      <div class="form-group">
+        <label>Profile Seed</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="number" id="profileSeed" class="input-mono" style="flex: 1;">
+          <button class="btn" id="btnGenSeed">Randomize</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Granular Stealth Modules -->
+    <div class="section-card">
+      <div class="section-title">Granular Protection Modules</div>
+      <div class="section-desc">Toggle specific hardware and environment spoofing layers.</div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-title">Navigator & Client Hints</span>
+          <span class="toggle-sub">Synchronously spoof userAgent, platform, hardwareConcurrency, and userAgentData</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="modNav"><span class="slider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-title">WebGL & WebGL2 Hardware</span>
+          <span class="toggle-sub">Replace UNMASKED_VENDOR, UNMASKED_RENDERER, and inject seeded readPixels noise</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="modWebGL"><span class="slider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-title">Canvas 2D & OffscreenCanvas</span>
+          <span class="toggle-sub">Apply deterministic micro-perturbation to toDataURL, toBlob, and getImageData</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="modCanvas"><span class="slider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-title">AudioContext & AnalyserNode</span>
+          <span class="toggle-sub">Add deterministic micro-jitter to AudioBuffer channel data and frequency arrays</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="modAudio"><span class="slider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-title">Screen & Viewport Geometry</span>
+          <span class="toggle-sub">Align window.screen, availWidth/Height, and devicePixelRatio with device preset</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="modScreen"><span class="slider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-title">Timezone & Geolocation Sync</span>
+          <span class="toggle-sub">Synchronize Intl.DateTimeFormat, timezone offset, and coordinates with active IP</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="modTz"><span class="slider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-title">WebRTC Leak Shield</span>
+          <span class="toggle-sub">Enforce disable_non_proxied_udp policy preventing local IP address leaks</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="modWebrtc"><span class="slider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-title">ClientRects Micro-Offset</span>
+          <span class="toggle-sub">Normalize getBoundingClientRect micro-offsets to evade font fingerprinting</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="modRects"><span class="slider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-title">Dynamic Iframe Stealth</span>
+          <span class="toggle-sub">Recursively propagate prototype definitions to dynamically spawned iframes</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="modIframe"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+      <button class="btn btn-primary" id="btnSaveBottom">Save Changes</button>
+    </div>
+
+    <div id="toastMessage" class="toast-bar toast-success">
+      Settings saved successfully.
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

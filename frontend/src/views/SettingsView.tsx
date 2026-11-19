@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Save } from 'lucide-react';
+import { Monitor, Moon, Save, Sun } from 'lucide-react';
 import { Checkbox } from '../components/Checkbox';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { Select } from '../components/ui/Select';
 import { t } from '../i18n';
 import { AppSettings, ThemeMode } from '../types';
 
@@ -12,7 +13,12 @@ interface SettingsViewProps {
   onChangeThemeMode?: (mode: ThemeMode) => void;
 }
 
-export function SettingsView({ settings, onSave, themeMode = 'dark', onChangeThemeMode }: SettingsViewProps) {
+export function SettingsView({
+  settings,
+  onSave,
+  themeMode = 'light',
+  onChangeThemeMode,
+}: SettingsViewProps) {
   const [browserPath, setBrowserPath] = useState(settings?.browser_path || '');
   const [startUrl, setStartUrl] = useState(settings?.start_url || 'https://browserleaks.com/canvas');
   const [maskWebRTC, setMaskWebRTC] = useState(settings?.mask_webrtc ?? true);
@@ -42,7 +48,6 @@ export function SettingsView({ settings, onSave, themeMode = 'dark', onChangeThe
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Header */}
       <header
         style={{
           height: 48,
@@ -68,12 +73,11 @@ export function SettingsView({ settings, onSave, themeMode = 'dark', onChangeThe
         </button>
       </header>
 
-      {/* Settings Form */}
       <div style={{ padding: '16px', flex: 1, overflowY: 'auto' }}>
         <form
           onSubmit={handleSave}
           style={{
-            maxWidth: 600,
+            maxWidth: 620,
             display: 'flex',
             flexDirection: 'column',
             gap: 16,
@@ -91,23 +95,45 @@ export function SettingsView({ settings, onSave, themeMode = 'dark', onChangeThe
               gap: 12,
             }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
-                {t.settings.appearanceTitle}
-              </label>
-              <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                {t.settings.appearanceHelp}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {t.settings.appearanceTitle}
+                </label>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                  {t.settings.appearanceHelp}
+                </div>
+              </div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--accent)' }}>
+                {themeMode === 'light' ? (
+                  <Sun size={16} strokeWidth={1.75} />
+                ) : themeMode === 'dark' ? (
+                  <Moon size={16} strokeWidth={1.75} />
+                ) : (
+                  <Monitor size={16} strokeWidth={1.75} />
+                )}
               </div>
             </div>
 
             {onChangeThemeMode && (
-              <div style={{ maxWidth: 280 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ width: 220 }}>
+                  <Select
+                    value={themeMode}
+                    onValueChange={(val) => onChangeThemeMode(val as ThemeMode)}
+                    options={[
+                      { value: 'light', label: `${t.settings.themeLight} (Default)` },
+                      { value: 'dark', label: t.settings.themeDark },
+                      { value: 'system', label: t.settings.themeSystem },
+                    ]}
+                  />
+                </div>
                 <SegmentedControl
                   value={themeMode}
                   onChange={(val) => onChangeThemeMode(val as ThemeMode)}
                   options={[
-                    { value: 'dark', label: t.settings.themeDark },
                     { value: 'light', label: t.settings.themeLight },
+                    { value: 'dark', label: t.settings.themeDark },
                     { value: 'system', label: t.settings.themeSystem },
                   ]}
                 />
@@ -137,23 +163,24 @@ export function SettingsView({ settings, onSave, themeMode = 'dark', onChangeThe
             </div>
 
             {settings.browsers && settings.browsers.length > 0 && (
-              <select
-                className="input-field"
+              <Select
                 value={browserPath}
                 onChange={(e) => setBrowserPath(e.target.value)}
-                style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11.5 }}
+                style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }}
               >
-                <option value="">(Auto-Detect: {settings.active_browser_path || 'None'})</option>
+                <option value="">
+                  {`Auto-Detect · ${settings.active_browser_path || 'Default'}`}
+                </option>
                 {settings.browsers.map((b, i) => {
                   const bPath = typeof b === 'string' ? b : b.path;
-                  const bName = typeof b === 'string' ? b : `${b.name} (${b.path})`;
+                  const bName = typeof b === 'string' ? b : `${b.name} · ${b.path}`;
                   return (
-                    <option key={i} value={bPath} style={{ backgroundColor: 'var(--bg-surface)' }}>
+                    <option key={i} value={bPath}>
                       {bName}
                     </option>
                   );
                 })}
-              </select>
+              </Select>
             )}
 
             <input

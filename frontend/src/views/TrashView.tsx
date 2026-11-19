@@ -1,5 +1,6 @@
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { EmptyState } from '../components/EmptyState';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { t } from '../i18n';
 import { TrashItem } from '../types';
 import { parseGpuName } from '../utils/formatters';
@@ -17,6 +18,7 @@ export function TrashView({
   onPurge,
   onPurgeAll,
 }: TrashViewProps) {
+  const { confirm } = useConfirm();
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Top Header */}
@@ -41,7 +43,7 @@ export function TrashView({
               fontSize: 11,
               fontWeight: 500,
               color: 'var(--text-tertiary)',
-              backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              backgroundColor: 'var(--bg-raised)',
               padding: '1px 6px',
               borderRadius: 4,
               fontFamily: 'var(--font-mono)',
@@ -54,8 +56,15 @@ export function TrashView({
         <button
           className="btn btn-danger"
           disabled={items.length === 0}
-          onClick={() => {
-            if (confirm(t.trash.confirmPurgeAll)) {
+          onClick={async () => {
+            const ok = await confirm({
+              title: t.trash.emptyTrash,
+              description: t.trash.confirmPurgeAll,
+              confirmLabel: t.trash.emptyTrash,
+              cancelLabel: 'Cancel',
+              variant: 'danger',
+            });
+            if (ok) {
               onPurgeAll();
             }
           }}
@@ -188,8 +197,15 @@ export function TrashView({
                           className="btn btn-danger"
                           style={{ height: 28, padding: '0 8px' }}
                           title={t.trash.purge}
-                          onClick={() => {
-                            if (confirm(t.trash.confirmPurgeItem(item.name))) {
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: t.trash.purge,
+                              description: t.trash.confirmPurgeItem(item.name),
+                              confirmLabel: t.trash.purge,
+                              cancelLabel: 'Cancel',
+                              variant: 'danger',
+                            });
+                            if (ok) {
                               onPurge(item.trash_id);
                             }
                           }}

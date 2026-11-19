@@ -18,7 +18,7 @@ export function SegmentedControl<T extends string = string>({
 }: SegmentedControlProps<T>) {
   const isSm = size === 'sm';
   const height = isSm ? 'var(--control-height-sm)' : 'var(--control-height)';
-  const itemHeight = isSm ? '22px' : '26px';
+  const itemHeight = isSm ? '24px' : '30px';
   const fontSize = isSm ? 'var(--text-caption)' : 'var(--text-label)';
 
   const normalizedOptions: SegmentOption<T>[] = options.map((opt) =>
@@ -30,7 +30,7 @@ export function SegmentedControl<T extends string = string>({
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        backgroundColor: 'var(--bg-surface)',
+        backgroundColor: 'var(--bg-raised)',
         border: '1px solid var(--border)',
         borderRadius: 'var(--radius-control)',
         padding: 2,
@@ -48,28 +48,26 @@ export function SegmentedControl<T extends string = string>({
             onClick={() => onChange(opt.value)}
             style={{
               height: itemHeight,
-              padding: '0 10px',
+              padding: '0 12px',
               borderRadius: 'calc(var(--radius-control) - 2px)',
               border: 'none',
-              backgroundColor: isActive ? 'var(--bg-raised)' : 'transparent',
-              color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+              backgroundColor: isActive ? 'var(--bg-surface)' : 'transparent',
+              color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
               fontSize,
               fontWeight: isActive ? 600 : 500,
               cursor: 'pointer',
               outline: 'none',
               whiteSpace: 'nowrap',
-              boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              boxShadow: isActive ? '0 1px 3px rgba(15, 23, 42, 0.10)' : 'none',
             }}
             onMouseEnter={(e) => {
               if (!isActive) {
                 e.currentTarget.style.color = 'var(--text-primary)';
-                e.currentTarget.style.backgroundColor = 'var(--bg-row-hover)';
               }
             }}
             onMouseLeave={(e) => {
               if (!isActive) {
                 e.currentTarget.style.color = 'var(--text-secondary)';
-                e.currentTarget.style.backgroundColor = 'transparent';
               }
             }}
           >
@@ -80,4 +78,3 @@ export function SegmentedControl<T extends string = string>({
     </div>
   );
 }
-

@@ -99,49 +99,41 @@ class StealthLauncher:
             except FileNotFoundError:
                 self.chrome_path = ""
 
-    def prepare_extension(self, profile: dict) -> Path:
+    def get_enabled_custom_extension_paths(self) -> List[str]:
         """
-        Create a per-profile customized unpacked extension.
+        Collect directories of enabled custom extensions that actually exist on disk.
         """
-        profile_path = Path(profile["user_data_dir"]).parent
-        ext_dir = profile_path / "StealthExtension"
-        ext_dir.mkdir(parents=True, exist_ok=True)
-
-        # Manifest V3
-        manifest = {
-            "manifest_version": 3,
-            "name": f"Stealth Identity - {profile['name']}",
-            "version": "1.0.0",
-            "description": "Hardware & canvas fingerprint masking",
-            "content_scripts": [
-                {
-                    "matches": ["<all_urls>"],
-                    "js": ["content.js"],
-                    "run_at": "document_start",
-                    "world": "MAIN",
-                    "all_frames": True
-                }
-            ]
-        }
-        with open(ext_dir / "manifest.json", "w", encoding="utf-8") as f:
-            json.dump(manifest, f, indent=2)
-
-        # Injected content script
-        stealth_js = generate_stealth_script(profile)
-        with open(ext_dir / "content.js", "w", encoding="utf-8") as f:
-            f.write(stealth_js)
-
-        return ext_dir
+        custom_ext_file = Path(__file__).resolve().parent.parent / "data" / "custom_extensions.json"
+        valid_paths = []
+        if custom_ext_file.is_file():
+            try:
+                with open(custom_ext_file, "r", encoding="utf-8") as f:
+                    registry = json.load(f)
+                if isinstance(registry, list):
+                    for ext in registry:
+                        if ext.get("enabled", True):
+                            ext_path_str = ext.get("path", "")
+                            if ext_path_str:
+                                p = Path(ext_path_str)
+                                if p.is_dir() and (p / "manifest.json").is_file():
+                                    valid_paths.append(str(p.resolve()))
+            except Exception as e:
+                print(f"[!] Warning reading custom extensions: {e}")
+        return valid_paths
 
     def launch(
         self,
         profile_name: str,
         target_url: str = "https://browserleaks.com/canvas",
         remote_port: Optional[int] = None,
-        headless: bool = False
+        headless: bool = False,
+        overrides: Optional[dict] = None,
+        use_extension: bool = True,
     ) -> subprocess.Popen:
         """
-        Launch Chromium browser with the stealth profile.
+        Launch Chromium with the profile identity. CDP application runs on a
+        daemon thread started here, so every entrypoint (UI server, CLI) gets
+        the same engine-level treatment.
         """
         if not self.chrome_path or not os.path.exists(self.chrome_path):
             raise FileNotFoundError("Path browser Chromium belum disetel atau tidak valid.")
@@ -149,75 +141,118 @@ class StealthLauncher:
         if not remote_port:
             remote_port = find_free_port()
         profile = self.profile_mgr.get_profile(profile_name)
-        ext_path = self.prepare_extension(profile)
         user_data_dir = profile["user_data_dir"]
+        overrides = overrides or {}
 
+        # --- launch flags --------------------------------------------------------
         args = [
             self.chrome_path,
             f"--user-data-dir={user_data_dir}",
-            f"--load-extension={str(ext_path)}",
             f"--remote-debugging-port={remote_port}",
             "--disable-blink-features=AutomationControlled",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-infobars",
+            # Machine signal suppression: no telemetry pings, no sync prompts,
+            # no crash reports leaving the machine, no component updater calls.
+            "--disable-crash-reporter",
+            f"--crash-dumps-dir={Path(user_data_dir).parent / 'crash_dumps'}",
+            "--disable-component-update",
+            "--disable-sync",
+            "--no-pings",
             "--disable-features=IsolateOrigins,site-per-process",
             f"--user-agent={profile.get('user_agent', '')}",
             f"--window-size={profile.get('screen_width', 1920)},{profile.get('screen_height', 1080)}",
         ]
 
+        # Enforce strict WebRTC permissions and isolation
+        args.append("--enforce-webrtc-ip-permission-check")
+
+        if use_extension:
+            custom_paths = self.get_enabled_custom_extension_paths()
+            if custom_paths:
+                args.append(f"--load-extension={','.join(custom_paths)}")
+
+        # Accept-Language must equal navigator.languages (spec 4.2). --lang also
+        # shapes the engine's own locale fallbacks.
+        languages = overrides.get("languages") or profile.get("languages") or []
+        if languages:
+            args.append(f"--lang={languages[0]}")
+
+        # WebRTC handling per profile choice; altered/disabled both keep the
+        # engine from exposing local IPs (with a proxy set, WebRTC uses it).
+        webrtc_mode = profile.get("webrtc_mode", "altered")
+        if webrtc_mode in ("disabled", "altered"):
+            args.append("--force-webrtc-ip-handling-policy=disable_non_proxied_udp")
+
         if profile.get("proxy"):
             args.append(f"--proxy-server={profile['proxy']}")
+
+        for extra in (profile.get("extra_args") or "").split():
+            if extra.startswith("-"):
+                args.append(extra)
 
         if headless:
             args.append("--headless=new")
 
         args.append(target_url)
 
+        tz_label = overrides.get("timezone") or (
+            "auto (browser IP)" if profile.get("timezone_mode", "proxy") == "proxy" else "engine default"
+        )
         print("=" * 65)
         print(f"[*] Launching Stealth Browser Profile: '{profile['name']}'")
         print(f"[*] Engine:             {self.chrome_path}")
-        print(f"[*] Hardware Emulation: {profile['webgl_renderer']}")
-        print(f"[*] Canvas Noise Seed:  {profile['canvas_seed']}")
-        print(f"[*] Audio Noise Seed:   {profile['audio_seed']}")
+        print(f"[*] Hardware Emulation: {profile.get('webgl_renderer')}")
+        print(f"[*] Canvas Noise Seed:  {profile.get('canvas_seed')}")
+        print(f"[*] Audio Noise Seed:   {profile.get('audio_seed')}")
         print(f"[*] Isolated UserData:  {user_data_dir}")
+        print(f"[*] Timezone/Lang:      {tz_label} / {languages[0] if languages else 'auto (browser IP)'}")
         print(f"[*] Target URL:         {target_url}")
         print("=" * 65)
 
         env = os.environ.copy()
+        # Suppress the "Google API keys are missing" infobar.
         env["GOOGLE_API_KEY"] = "no"
         env["GOOGLE_DEFAULT_CLIENT_ID"] = "no"
         env["GOOGLE_DEFAULT_CLIENT_SECRET"] = "no"
+        # Timezone fallback (CDP setTimezoneOverride is the primary mechanism).
+        if overrides.get("timezone"):
+            env["TZ"] = overrides["timezone"]
 
         proc = subprocess.Popen(args, env=env)
+
+        from .cdp_apply import start_cdp_thread
+        start_cdp_thread(remote_port, profile, overrides, browser_path=self.chrome_path)
         return proc
 
 
 async def attach_cdp_hooks(port: int, stealth_js: str):
     """
-    Connect to Chrome CDP and register Page.addScriptToEvaluateOnNewDocument.
+    Legacy helper kept for run_stealth.py compatibility. New code should use
+    cdp_apply.apply_profile_cdp, which also applies Emulation overrides.
     """
-    import aiohttp
+    from .cdp_apply import _StdlibWebSocket, _wait_for_version
     await asyncio.sleep(1.5)
 
+    ws = None
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"http://127.0.0.1:{port}/json/version") as resp:
-                if resp.status != 200:
-                    return
-                data = await resp.json()
-                ws_url = data.get("webSocketDebuggerUrl")
-
-            if not ws_url:
-                return
-
-            async with session.ws_connect(ws_url) as ws:
-                await ws.send_json({"id": 1, "method": "Page.enable", "params": {}})
-                await ws.send_json({
-                    "id": 2,
-                    "method": "Page.addScriptToEvaluateOnNewDocument",
-                    "params": {"source": stealth_js}
-                })
-                print("[*] CDP Hook: Page.addScriptToEvaluateOnNewDocument successfully registered.")
+        data = await _wait_for_version(port)
+        if not data:
+            return
+        ws_url = data.get("webSocketDebuggerUrl")
+        if not ws_url:
+            return
+        ws = await _StdlibWebSocket.connect(ws_url)
+        await ws.send_str(json.dumps({"id": 1, "method": "Page.enable", "params": {}}))
+        await ws.send_str(json.dumps({
+            "id": 2,
+            "method": "Page.addScriptToEvaluateOnNewDocument",
+            "params": {"source": stealth_js}
+        }))
+        print("[*] CDP Hook: Page.addScriptToEvaluateOnNewDocument successfully registered.")
     except Exception:
         pass
+    finally:
+        if ws is not None:
+            await ws.close()

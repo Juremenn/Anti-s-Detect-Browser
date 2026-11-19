@@ -4,14 +4,20 @@ web_ui_server.py - Local web server and app-window launcher for the Profil Studi
 Binds to 127.0.0.1 only and rejects requests from other origins.
 """
 
+import base64
+import hashlib
+import io
 import json
 import os
+import re
 import shutil
+import struct
 import subprocess
 import sys
 import threading
 import time
 import urllib.request
+import zipfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -28,7 +34,9 @@ ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web_ui"
 SETTINGS_FILE = ROOT / "app_settings.json"
 PROXIES_FILE = ROOT / "proxies.json"
-MAX_BODY = 5 * 1024 * 1024
+MAX_BODY = 50 * 1024 * 1024
+CUSTOM_EXTENSIONS_FILE = ROOT / "data" / "custom_extensions.json"
+CUSTOM_EXTENSIONS_DIR = ROOT / "data" / "custom-extensions"
 DEFAULT_SETTINGS = {
     "browser_path": "",
     "start_url": "https://browserleaks.com/canvas",
@@ -36,8 +44,69 @@ DEFAULT_SETTINGS = {
 }
 ALLOWED_ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 
+def load_custom_extensions() -> List[dict]:
+    if not CUSTOM_EXTENSIONS_FILE.is_file():
+        return []
+    try:
+        with open(CUSTOM_EXTENSIONS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+def save_custom_extensions(items: List[dict]):
+    CUSTOM_EXTENSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(CUSTOM_EXTENSIONS_FILE, "w", encoding="utf-8") as f:
+        json.dump(items, f, indent=2)
+
+def resolve_extension_icon(ext_dir: Path, manifest: dict) -> str:
+    icons = manifest.get("icons") or {}
+    default_icon = (manifest.get("action") or {}).get("default_icon")
+    icon_rel = None
+    if isinstance(icons, dict):
+        for size in ("128", "48", "32", "16"):
+            if size in icons and isinstance(icons[size], str):
+                icon_rel = icons[size]
+                break
+    elif isinstance(icons, str):
+        icon_rel = icons
+
+    if not icon_rel and isinstance(default_icon, dict):
+        for size in ("128", "48", "32", "16"):
+            if size in default_icon and isinstance(default_icon[size], str):
+                icon_rel = default_icon[size]
+                break
+    elif not icon_rel and isinstance(default_icon, str):
+        icon_rel = default_icon
+
+    if icon_rel:
+        icon_path = ext_dir / icon_rel
+        if icon_path.is_file():
+            try:
+                raw = icon_path.read_bytes()
+                mime = "image/png"
+                if icon_path.suffix.lower() == ".svg":
+                    mime = "image/svg+xml"
+                elif icon_path.suffix.lower() in (".jpg", ".jpeg"):
+                    mime = "image/jpeg"
+                b64 = base64.b64encode(raw).decode("ascii")
+                return f"data:{mime};base64,{b64}"
+            except Exception:
+                pass
+    return ""
+
+def compute_extension_id_from_pubkey(pubkey_bytes: bytes) -> str:
+    digest = hashlib.sha256(pubkey_bytes).digest()[:16]
+    return "".join(chr(ord("a") + ((b >> 4) & 0x0F)) + chr(ord("a") + (b & 0x0F)) for b in digest)
+
+def compute_fallback_id(name: str, path_str: str) -> str:
+    norm = f"{name}:{path_str}".lower()
+    digest = hashlib.sha256(norm.encode("utf-8")).digest()[:16]
+    return "".join(chr(ord("a") + ((b >> 4) & 0x0F)) + chr(ord("a") + (b & 0x0F)) for b in digest)
+
 profile_mgr = ProfileManager()
 active_processes: Dict[str, subprocess.Popen] = {}
+active_overrides: Dict[str, dict] = {}
 proc_lock = threading.Lock()
 
 
@@ -150,11 +219,13 @@ def prune_processes():
     with proc_lock:
         for name in [n for n, p in active_processes.items() if p.poll() is not None]:
             del active_processes[name]
+            active_overrides.pop(name, None)
 
 
 def stop_profile(name: str) -> bool:
     with proc_lock:
         proc = active_processes.pop(name, None)
+        active_overrides.pop(name, None)
     if proc and proc.poll() is None:
         kill_tree(proc)
         # Give Chrome a beat to release file locks before touching UserData.
@@ -191,13 +262,21 @@ def _apply_on_close(profile: dict):
 
 def proxy_country_for(profile: dict) -> Optional[str]:
     """Country of the profile's proxy, matched by exact URL against the saved
-    proxy list (its country was set when the proxy was added/checked)."""
+    proxy list (or resolved from local GeoIP DB if the proxy host is an IP)."""
     proxy = (profile.get("proxy") or "").strip()
     if not proxy:
         return None
     for entry in load_proxies():
         if isinstance(entry, dict) and entry.get("url") == proxy:
-            return entry.get("country") or None
+            if entry.get("country"):
+                return entry.get("country")
+    try:
+        parsed = proxy_utils.parse_proxy_string(proxy)
+        geo = proxy_utils.geoip_country(parsed.get("host") or "")
+        if geo.get("country"):
+            return geo["country"]
+    except Exception:
+        pass
     return None
 
 
@@ -255,9 +334,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/profiles": self._get_profiles,
             "/api/trash": lambda: self._send_json({"items": profile_mgr.list_trash()}),
             "/api/settings": self._get_settings,
-            "/api/presets": lambda: self._send_json({"presets": HARDWARE_PRESETS}),
+            "/api/presets": self._get_presets,
             "/api/proxies": lambda: self._send_json({"proxies": load_proxies()}),
             "/api/templates": lambda: self._send_json({"templates": profile_mgr.list_templates()}),
+            "/api/extensions": self._get_extensions,
+            "/api/extensions/health_check": self._health_check_extensions,
+            "/api/extensions/config": self._get_extension_config,
             "/api/profiles/detail": self._profile_detail,
             "/api/geoip/status": lambda: self._send_json({
                 "db": (proxy_utils.find_mmdb().name if proxy_utils.find_mmdb() else None)}),
@@ -310,6 +392,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/proxies/check": self._check_proxy,
             "/api/templates/save": self._save_template,
             "/api/templates/delete": self._delete_template,
+            "/api/extensions/toggle": self._toggle_extension,
+            "/api/extensions/config": self._save_extension_config,
+            "/api/extensions/install_crx": self._install_crx,
+            "/api/extensions/load_unpacked": self._load_unpacked,
+            "/api/extensions/reload": self._reload_extension,
+            "/api/extensions/remove": self._remove_extension,
+            "/api/extensions/open_folder": self._open_extension_folder,
             "/api/profiles/validate": self._validate_profile,
         }
         handler = routes.get(path)
@@ -346,6 +435,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "active_engine": engine,
             "trash_count": trash_count
         })
+
+    def _get_presets(self):
+        import re
+        eng = detect_engine_version()
+        major = eng.split(".")[0] if eng and eng[0].isdigit() else ""
+        out = []
+        for p in HARDWARE_PRESETS:
+            item = dict(p)
+            if major and item.get("user_agent"):
+                item["user_agent"] = re.sub(r"Chrome/\d+\.", f"Chrome/{major}.", str(item["user_agent"]))
+            out.append(item)
+        self._send_json({"presets": out})
 
     def _get_settings(self):
         self._send_json({
@@ -389,6 +490,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         with proc_lock:
             if running(name):
                 return self._send_json({"status": "already_running", "pid": active_processes[name].pid})
+            active_overrides[name] = overrides
             proc = launcher.launch(profile_name=name, target_url=data.get("url") or settings["start_url"],
                                    overrides=overrides)
             active_processes[name] = proc
@@ -398,6 +500,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self._send_json({"status": "stopped" if stop_profile(data.get("name")) else "not_running"})
 
     def _create(self, data: dict):
+        import re
+        eng = detect_engine_version()
+        major = eng.split(".")[0] if eng and eng[0].isdigit() else ""
         created = profile_mgr.create_profile(
             name=data.get("name"),
             preset_index=data.get("preset", 0),
@@ -409,6 +514,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             custom=data.get("custom"),
             extra=data.get("extra"),
         )
+        if major and created.get("user_agent") and not (data.get("custom") or {}).get("user_agent"):
+            fixed_ua = re.sub(r"Chrome/\d+\.", f"Chrome/{major}.", str(created["user_agent"]))
+            if fixed_ua != created["user_agent"]:
+                created = profile_mgr.set_fingerprint(created["name"], {"user_agent": fixed_ua})
         self._send_json({"status": "created", "profile": created})
 
     def _refresh_fingerprint(self, data: dict):
@@ -425,7 +534,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         query = parse_qs(urlparse(self.path).query)
         name = (query.get("name") or [""])[0]
         profile = profile_mgr.get_profile(name, create_if_missing=False)
-        overrides = resolve_overrides(profile, proxy_country_for(profile))
+        overrides = active_overrides.get(name) or resolve_overrides(profile, proxy_country_for(profile))
         self._send_json({**profile, "_overrides": overrides})
 
     def _set_fingerprint(self, data: dict):
@@ -596,6 +705,319 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         deleted = profile_mgr.delete_template(data.get("id"))
         self._send_json({"status": "deleted" if deleted else "not_found"})
 
+    def _get_extensions(self):
+        extensions = load_custom_extensions()
+        updated = False
+        for ext in extensions:
+            p = Path(ext.get("path", ""))
+            manifest_p = p / "manifest.json"
+            config_p = p / "config.json"
+            is_configurable = config_p.is_file()
+            if ext.get("configurable") != is_configurable:
+                ext["configurable"] = is_configurable
+                updated = True
+
+            if p.is_dir() and manifest_p.is_file():
+                if ext.get("status") != "ready":
+                    ext["status"] = "ready"
+                    updated = True
+            else:
+                if ext.get("status") != "missing":
+                    ext["status"] = "missing"
+                    updated = True
+        if updated:
+            save_custom_extensions(extensions)
+        self._send_json({"extensions": extensions})
+
+    def _health_check_extensions(self):
+        return self._get_extensions()
+
+    def _get_extension_config(self):
+        parsed = urlparse(self.path)
+        qs = parse_qs(parsed.query)
+        ext_id = qs.get("id", [""])[0]
+        if not ext_id:
+            return self._error("Parameter 'id' is required.", 400)
+
+        extensions = load_custom_extensions()
+        ext = next((e for e in extensions if e.get("id") == ext_id), None)
+        if not ext:
+            return self._error(f"Extension '{ext_id}' not found.", 404)
+
+        folder = Path(ext.get("path", ""))
+        config_file = folder / "config.json"
+        presets_file = folder / "presets.json"
+
+        cfg = {}
+        if config_file.is_file():
+            try:
+                cfg = json.loads(config_file.read_text(encoding="utf-8"))
+            except Exception as e:
+                return self._error(f"Failed to read config.json: {e}", 500)
+
+        presets = []
+        if presets_file.is_file():
+            try:
+                presets = json.loads(presets_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+        self._send_json({"status": "ok", "config": cfg, "presets": presets})
+
+    def _save_extension_config(self, data: dict):
+        ext_id = data.get("id")
+        new_config = data.get("config")
+        if not ext_id or not isinstance(new_config, dict):
+            return self._error("id and config dictionary are required.", 400)
+
+        extensions = load_custom_extensions()
+        ext = next((e for e in extensions if e.get("id") == ext_id), None)
+        if not ext:
+            return self._error(f"Extension '{ext_id}' not found.", 404)
+
+        folder = Path(ext.get("path", ""))
+        config_file = folder / "config.json"
+        if not folder.is_dir():
+            return self._error(f"Extension directory not found: {folder}", 404)
+
+        try:
+            config_file.write_text(json.dumps(new_config, indent=2), encoding="utf-8")
+            self._send_json({"status": "ok", "config": new_config})
+        except Exception as e:
+            self._error(f"Failed to write config.json: {e}", 500)
+
+    def _toggle_extension(self, data: dict):
+        ext_id = data.get("id")
+        enabled = bool(data.get("enabled", True))
+        extensions = load_custom_extensions()
+        found = False
+        for ext in extensions:
+            if ext.get("id") == ext_id:
+                ext["enabled"] = enabled
+                found = True
+                break
+        if found:
+            save_custom_extensions(extensions)
+            self._send_json({"status": "ok", "id": ext_id, "enabled": enabled})
+        else:
+            self._error(f"Extension '{ext_id}' not found.", 404)
+
+    def _install_crx(self, data: dict):
+        file_name = data.get("file_name") or data.get("fileName") or "extension.crx"
+        file_data_b64 = data.get("file_data") or data.get("fileData") or ""
+        if not file_data_b64:
+            return self._error("file_data is required.", 400)
+
+        try:
+            if "," in file_data_b64:
+                file_data_b64 = file_data_b64.split(",", 1)[1]
+            raw_data = base64.b64decode(file_data_b64)
+        except Exception as e:
+            return self._error(f"Failed to decode base64 file data: {e}", 400)
+
+        pubkey_bytes = b""
+        if raw_data.startswith(b"Cr24"):
+            version = struct.unpack("<I", raw_data[4:8])[0]
+            if version == 3:
+                header_len = struct.unpack("<I", raw_data[8:12])[0]
+                zip_offset = 12 + header_len
+            elif version == 2:
+                pub_len = struct.unpack("<I", raw_data[8:12])[0]
+                sig_len = struct.unpack("<I", raw_data[12:16])[0]
+                pubkey_bytes = raw_data[16:16+pub_len]
+                zip_offset = 16 + pub_len + sig_len
+            else:
+                zip_offset = raw_data.find(b"PK\x03\x04")
+        else:
+            zip_offset = raw_data.find(b"PK\x03\x04")
+
+        if zip_offset == -1 or zip_offset >= len(raw_data):
+            return self._error("Invalid CRX archive: ZIP signature not found.", 400)
+
+        zip_bytes = raw_data[zip_offset:]
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        except Exception as e:
+            return self._error(f"Invalid ZIP payload: {e}", 400)
+
+        manifest_entry = None
+        for name in zf.namelist():
+            if name.lower() == "manifest.json":
+                manifest_entry = name
+                break
+        if not manifest_entry:
+            return self._error("Invalid extension: manifest.json missing inside archive.", 400)
+
+        try:
+            manifest = json.loads(zf.read(manifest_entry).decode("utf-8"))
+        except Exception as e:
+            return self._error(f"Failed to parse manifest.json: {e}", 400)
+
+        ext_name = manifest.get("name", Path(file_name).stem)
+        if pubkey_bytes:
+            ext_id = compute_extension_id_from_pubkey(pubkey_bytes)
+        else:
+            sanitized = re.sub(r"[^a-z0-9_-]", "-", ext_name.lower()).strip("-")
+            ext_id = sanitized or "custom-extension"
+
+        CUSTOM_EXTENSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        dest_dir = CUSTOM_EXTENSIONS_DIR / ext_id
+        if dest_dir.exists():
+            shutil.rmtree(dest_dir, ignore_errors=True)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        for member in zf.namelist():
+            target_path = (dest_dir / member).resolve()
+            if not str(target_path).startswith(str(dest_dir.resolve())):
+                continue
+            if member.endswith("/") or member.endswith("\\"):
+                target_path.mkdir(parents=True, exist_ok=True)
+            else:
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(target_path, "wb") as f_out:
+                    f_out.write(zf.read(member))
+
+        icon_data = resolve_extension_icon(dest_dir, manifest)
+        entry = {
+            "id": ext_id,
+            "name": ext_name,
+            "version": manifest.get("version", "1.0.0"),
+            "description": manifest.get("description", ""),
+            "enabled": True,
+            "source_type": "crx",
+            "path": str(dest_dir.resolve()),
+            "manifest_version": manifest.get("manifest_version", 3),
+            "permissions": manifest.get("permissions", []),
+            "icon_url": icon_data,
+            "status": "ready",
+            "configurable": (dest_dir / "config.json").is_file()
+        }
+
+        extensions = load_custom_extensions()
+        existing_idx = next((i for i, e in enumerate(extensions) if e.get("id") == ext_id), None)
+        if existing_idx is not None:
+            entry["enabled"] = extensions[existing_idx].get("enabled", True)
+            extensions[existing_idx] = entry
+        else:
+            extensions.append(entry)
+        save_custom_extensions(extensions)
+
+        self._send_json({"status": "ok", "extension": entry})
+
+    def _load_unpacked(self, data: dict):
+        raw_path = (data.get("path") or "").strip()
+        if not raw_path:
+            return self._error("Folder path is required.", 400)
+
+        folder = Path(raw_path).resolve()
+        if not folder.is_dir():
+            return self._error(f"Directory not found: {folder}", 404)
+
+        manifest_file = folder / "manifest.json"
+        if not manifest_file.is_file():
+            return self._error(f"manifest.json not found in: {folder}", 400)
+
+        try:
+            manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+        except Exception as e:
+            return self._error(f"Failed to parse manifest.json: {e}", 400)
+
+        ext_name = manifest.get("name", folder.name)
+        ext_id = compute_fallback_id(ext_name, str(folder))
+        icon_data = resolve_extension_icon(folder, manifest)
+
+        entry = {
+            "id": ext_id,
+            "name": ext_name,
+            "version": manifest.get("version", "1.0.0"),
+            "description": manifest.get("description", ""),
+            "enabled": True,
+            "source_type": "unpacked",
+            "path": str(folder),
+            "manifest_version": manifest.get("manifest_version", 3),
+            "permissions": manifest.get("permissions", []),
+            "icon_url": icon_data,
+            "status": "ready",
+            "configurable": (folder / "config.json").is_file()
+        }
+
+        extensions = load_custom_extensions()
+        existing_idx = next((i for i, e in enumerate(extensions) if e.get("path") == str(folder) or e.get("id") == ext_id), None)
+        if existing_idx is not None:
+            entry["enabled"] = extensions[existing_idx].get("enabled", True)
+            extensions[existing_idx] = entry
+        else:
+            extensions.append(entry)
+        save_custom_extensions(extensions)
+
+        self._send_json({"status": "ok", "extension": entry})
+
+    def _reload_extension(self, data: dict):
+        ext_id = data.get("id")
+        extensions = load_custom_extensions()
+        existing = next((e for e in extensions if e.get("id") == ext_id), None)
+        if not existing:
+            return self._error(f"Extension '{ext_id}' not found.", 404)
+
+        folder = Path(existing.get("path", ""))
+        manifest_file = folder / "manifest.json"
+        if not folder.is_dir() or not manifest_file.is_file():
+            existing["status"] = "missing"
+            save_custom_extensions(extensions)
+            return self._send_json({"status": "ok", "extension": existing})
+
+        try:
+            manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+            existing["name"] = manifest.get("name", existing.get("name"))
+            existing["version"] = manifest.get("version", existing.get("version"))
+            existing["description"] = manifest.get("description", existing.get("description"))
+            existing["manifest_version"] = manifest.get("manifest_version", existing.get("manifest_version"))
+            existing["permissions"] = manifest.get("permissions", existing.get("permissions"))
+            existing["icon_url"] = resolve_extension_icon(folder, manifest)
+            existing["status"] = "ready"
+            save_custom_extensions(extensions)
+            self._send_json({"status": "ok", "extension": existing})
+        except Exception as e:
+            return self._error(f"Failed to reload extension: {e}", 400)
+
+    def _remove_extension(self, data: dict):
+        ext_id = data.get("id")
+        extensions = load_custom_extensions()
+        existing = next((e for e in extensions if e.get("id") == ext_id), None)
+        if not existing:
+            return self._error(f"Extension '{ext_id}' not found.", 404)
+
+        if existing.get("source_type") == "crx":
+            dest_dir = Path(existing.get("path", ""))
+            if dest_dir.is_dir() and str(dest_dir.resolve()).startswith(str(CUSTOM_EXTENSIONS_DIR.resolve())):
+                shutil.rmtree(dest_dir, ignore_errors=True)
+
+        extensions = [e for e in extensions if e.get("id") != ext_id]
+        save_custom_extensions(extensions)
+        self._send_json({"status": "ok", "id": ext_id})
+
+    def _open_extension_folder(self, data: dict):
+        ext_id = data.get("id")
+        extensions = load_custom_extensions()
+        existing = next((e for e in extensions if e.get("id") == ext_id), None)
+        if not existing:
+            return self._error(f"Extension '{ext_id}' not found.", 404)
+
+        folder = Path(existing.get("path", ""))
+        if not folder.exists():
+            return self._error(f"Folder does not exist on disk: {folder}", 404)
+
+        try:
+            if sys.platform == "win32":
+                subprocess.Popen(["explorer.exe", str(folder.resolve())])
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(folder.resolve())])
+            else:
+                subprocess.Popen(["xdg-open", str(folder.resolve())])
+            self._send_json({"status": "ok"})
+        except Exception as e:
+            self._error(f"Failed to open folder: {e}", 500)
+
 
 def launch_in_app_window(port: int):
     """Open the dashboard as an app window (no tabs or address bar) and disable dev infobars."""
@@ -632,9 +1054,23 @@ def server_already_running(port: int) -> bool:
         return False
 
 
+def create_server(port: int = PORT) -> ThreadingHTTPServer:
+    return ThreadingHTTPServer(("127.0.0.1", port), DashboardHandler)
+
+
+def shutdown_all_profiles():
+    with proc_lock:
+        names = list(active_processes.keys())
+    for name in names:
+        try:
+            stop_profile(name)
+        except Exception:
+            pass
+
+
 def main():
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), DashboardHandler)
+        server = create_server(PORT)
     except OSError:
         if server_already_running(PORT):
             print("[*] Dashboard sudah berjalan, membuka jendelanya.")
@@ -651,8 +1087,7 @@ def main():
     except KeyboardInterrupt:
         print("\n[*] Menutup server...")
     finally:
-        for name in list(active_processes):
-            stop_profile(name)
+        shutdown_all_profiles()
         server.server_close()
 
 

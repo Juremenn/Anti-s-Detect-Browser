@@ -102,6 +102,83 @@ def test_api():
         assert res.status == 200
         assert temp_name in body.get("trashed", [])
 
+        # 6. Delete API response
+        print("6. Delete API response:", res.status, body)
+        assert res.status == 200
+        assert temp_name in body.get("trashed", [])
+
+        # 7. Extensions API: GET /api/extensions (starts clean)
+        conn.request("GET", "/api/extensions", headers={"Origin": f"http://127.0.0.1:{PORT}"})
+        res = conn.getresponse()
+        assert res.status == 200
+        ext_data = json.loads(res.read().decode())
+        extensions = ext_data.get("extensions", [])
+        print("7. Initial extensions GET count:", len(extensions))
+
+        # 8. Extensions API: POST /api/extensions/load_unpacked
+        source_dir = str(Path(__file__).resolve().parent.parent / "extensions" / "anti-detect-browser")
+        load_payload = json.dumps({"path": source_dir}).encode()
+        conn.request("POST", "/api/extensions/load_unpacked", body=load_payload, headers={
+            "Origin": f"http://127.0.0.1:{PORT}",
+            "Content-Type": "application/json"
+        })
+        res = conn.getresponse()
+        assert res.status == 200
+        loaded_res = json.loads(res.read().decode())
+        ext_entry = loaded_res.get("extension", {})
+        loaded_id = ext_entry.get("id")
+        assert loaded_id is not None
+        print("8. Loaded unpacked extension:", ext_entry.get("name"), f"({loaded_id})")
+
+        # 8b. Extensions API: GET /api/extensions/config
+        conn.request("GET", f"/api/extensions/config?id={loaded_id}", headers={
+            "Origin": f"http://127.0.0.1:{PORT}"
+        })
+        res = conn.getresponse()
+        assert res.status == 200
+        cfg_data = json.loads(res.read().decode())
+        assert "config" in cfg_data
+        assert "presets" in cfg_data
+        print("8b. Extension config read:", cfg_data.get("config", {}).get("presetName"))
+
+        # 8c. Extensions API: POST /api/extensions/config
+        save_cfg_payload = json.dumps({
+            "id": loaded_id,
+            "config": {
+                **cfg_data.get("config", {}),
+                "identitySeed": "test_seed_777"
+            }
+        }).encode()
+        conn.request("POST", "/api/extensions/config", body=save_cfg_payload, headers={
+            "Origin": f"http://127.0.0.1:{PORT}",
+            "Content-Type": "application/json"
+        })
+        res = conn.getresponse()
+        assert res.status == 200
+        save_cfg_res = json.loads(res.read().decode())
+        assert save_cfg_res.get("config", {}).get("identitySeed") == "test_seed_777"
+        print("8c. Extension config updated successfully")
+
+        # 9. Extensions API: POST /api/extensions/toggle
+        toggle_payload = json.dumps({"id": loaded_id, "enabled": False}).encode()
+        conn.request("POST", "/api/extensions/toggle", body=toggle_payload, headers={
+            "Origin": f"http://127.0.0.1:{PORT}",
+            "Content-Type": "application/json"
+        })
+        res = conn.getresponse()
+        assert res.status == 200
+        print("9. Extensions toggle response:", res.status)
+
+        # 10. Extensions API: POST /api/extensions/remove
+        remove_payload = json.dumps({"id": loaded_id}).encode()
+        conn.request("POST", "/api/extensions/remove", body=remove_payload, headers={
+            "Origin": f"http://127.0.0.1:{PORT}",
+            "Content-Type": "application/json"
+        })
+        res = conn.getresponse()
+        assert res.status == 200
+        print("10. Extensions remove response:", res.status)
+
         # Clean test profiles
         if mgr.exists(test_prof):
             mgr.delete_profile(test_prof)

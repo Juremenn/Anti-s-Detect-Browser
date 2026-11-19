@@ -6,12 +6,10 @@ Run stealth anti-detect profiles locally with zero cloud dependencies or login r
 
 import sys
 import argparse
-import asyncio
 from pathlib import Path
 
 from stealth_browser.profile_manager import ProfileManager, HARDWARE_PRESETS
-from stealth_browser.launcher import StealthLauncher, attach_cdp_hooks
-from stealth_browser.stealth_hooks import generate_stealth_script
+from stealth_browser.launcher import StealthLauncher
 
 
 def main():
@@ -69,7 +67,8 @@ def main():
     if args.test:
         target_url = "https://browserleaks.com/canvas"
 
-    # Launch browser
+    # Launch browser (launch() starts the CDP apply thread itself, which
+    # registers the script and the Emulation overrides — no double attach here)
     launcher = StealthLauncher()
     proc = launcher.launch(
         profile_name=args.profile,
@@ -77,14 +76,6 @@ def main():
         remote_port=args.port,
         headless=args.headless
     )
-
-    # Attach dual-layer CDP hook asynchronously
-    profile = mgr.get_profile(args.profile)
-    stealth_js = generate_stealth_script(profile)
-    try:
-        asyncio.run(attach_cdp_hooks(args.port, stealth_js))
-    except Exception:
-        pass
 
     print("[*] Browser process running. Press Ctrl+C or close the browser window to stop.")
     try:

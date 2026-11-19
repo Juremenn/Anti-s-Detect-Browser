@@ -1,8 +1,9 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, EyeOff, RefreshCw, Shuffle } from 'lucide-react';
+import { Eye, EyeOff, RefreshCw, Shield, Shuffle, Sliders } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { ChipInput } from '../components/ui/ChipInput';
 import { Combobox } from '../components/ui/Combobox';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { IconButton } from '../components/ui/IconButton';
 import { Input } from '../components/ui/Input';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
@@ -12,6 +13,7 @@ import { Tabs, TabItem } from '../components/ui/Tabs';
 import { Textarea } from '../components/ui/Textarea';
 import { t } from '../i18n';
 import { api } from '../api';
+import { parseGpuName } from '../utils/formatters';
 import {
   ConsistencyResult,
   CreateProfilePayload,
@@ -29,6 +31,7 @@ interface ProfileEditDialogProps {
   isOpen: boolean;
   onClose: () => void;
   presets: Preset[];
+  initialPresetIndex?: number | null;
   proxies: ProxyItem[];
   existingTags: string[];
   folders: string[];
@@ -48,7 +51,6 @@ interface FormState {
   tags: string[];
   notes: string;
   seed: string;
-  // fingerprint grid (editable; prefilled from the chosen preset)
   os: string;
   platform: string;
   vendor: string;
@@ -61,7 +63,6 @@ interface FormState {
   dpr: string;
   colorDepth: string;
   languages: string;
-  // fingerprint behavior
   diversify: boolean;
   langMode: 'proxy' | 'manual';
   tzMode: 'proxy' | 'manual' | 'system';
@@ -75,11 +76,13 @@ interface FormState {
   webglNoise: boolean;
   audioNoise: boolean;
   clientrectsNoise: boolean;
+  fontNoise: boolean;
+  portScanProtection: boolean;
+  batterySpoof: boolean;
   mediaMic: string;
   mediaCam: string;
   mediaSpk: string;
   dnt: boolean;
-  // proxy
   proxySource: ProxySource;
   savedProxyId: string;
   newType: string;
@@ -87,7 +90,6 @@ interface FormState {
   newPort: string;
   newUser: string;
   newPass: string;
-  // advanced
   startUrls: string;
   onCloseMode: 'keep' | 'clear_cache' | 'clear_all';
   extraArgs: string;
@@ -96,16 +98,21 @@ interface FormState {
 const OS_LABEL: Record<string, string> = {
   win: 'Windows',
   mac: 'macOS',
+  ios: 'iOS',
+  android: 'Android',
   linux: 'Linux',
 };
 
 const OS_BY_PLATFORM: Record<string, string> = {
   Win32: 'win',
   MacIntel: 'mac',
+  iPhone: 'ios',
+  iPad: 'ios',
+  'Linux armv8l': 'android',
+  'Linux aarch64': 'android',
   'Linux x86_64': 'linux',
 };
 
-// Label colors are stored as names and rendered through theme tokens only.
 const LABEL_COLORS: Array<{ value: string; cssVar: string }> = [
   { value: '', cssVar: 'var(--border-strong)' },
   { value: 'gray', cssVar: 'var(--text-tertiary)' },
@@ -196,6 +203,9 @@ function initialForm(): FormState {
     webglNoise: true,
     audioNoise: true,
     clientrectsNoise: true,
+    fontNoise: true,
+    portScanProtection: true,
+    batterySpoof: true,
     mediaMic: '1',
     mediaCam: '1',
     mediaSpk: '1',
@@ -213,7 +223,6 @@ function initialForm(): FormState {
   };
 }
 
-// Fields the consistency validator needs, converted to numbers.
 function validationFields(form: FormState): Record<string, unknown> {
   return {
     os: form.os,
@@ -241,7 +250,6 @@ function collectCustom(form: FormState): CustomFingerprint {
     color_depth: form.colorDepth,
     languages: form.languages,
   };
-  // Backend rejects empty strings for these; omit to reuse preset values.
   if (form.vendor.trim()) fields.webgl_vendor = form.vendor.trim();
   if (form.renderer.trim()) fields.webgl_renderer = form.renderer.trim();
   if (form.userAgent.trim()) fields.user_agent = form.userAgent.trim();
@@ -264,6 +272,9 @@ function behaviorExtra(form: FormState): Record<string, unknown> {
     webgl_noise: form.webglNoise,
     audio_noise: form.audioNoise,
     clientrects_noise: form.clientrectsNoise,
+    font_noise: form.fontNoise,
+    port_scan_protection: form.portScanProtection,
+    battery_spoof: form.batterySpoof,
     dnt: form.dnt,
     media_mic: parseInt(form.mediaMic, 10) || 0,
     media_cam: parseInt(form.mediaCam, 10) || 0,
@@ -282,7 +293,6 @@ function behaviorExtra(form: FormState): Record<string, unknown> {
   return extra;
 }
 
-// Fix dicts from the validator target the same form keys.
 function applyFix(form: FormState, fix: Record<string, unknown>): FormState {
   const next = { ...form };
   for (const [key, value] of Object.entries(fix)) {
@@ -309,6 +319,7 @@ export function ProfileEditDialog({
   isOpen,
   onClose,
   presets,
+  initialPresetIndex = null,
   proxies,
   existingTags,
   folders,
@@ -320,6 +331,7 @@ export function ProfileEditDialog({
   onCreateAndStart,
   onToast,
 }: ProfileEditDialogProps) {
+  const { prompt } = useConfirm();
   const [tab, setTab] = useState<TabId2>('general');
   const [form, setForm] = useState<FormState>(initialForm);
   const [presetVal, setPresetVal] = useState('random');
@@ -356,17 +368,17 @@ export function ProfileEditDialog({
     setFpDirty(false);
   }
 
-  // Guard against re-initializing on background polling updates
   const activeEditIdRef = useRef<string | null>(null);
 
-  // Reset on open or when switched to a different profile
   useEffect(() => {
     if (!isOpen) {
       activeEditIdRef.current = null;
       return;
     }
 
-    const currentId = editProfile ? editProfile.name : '__NEW__';
+    const currentId = editProfile
+      ? editProfile.name
+      : `__NEW_${initialPresetIndex ?? 'rand'}__`;
     if (activeEditIdRef.current === currentId) {
       return;
     }
@@ -418,6 +430,9 @@ export function ProfileEditDialog({
         webglNoise: editProfile.webgl_noise !== false,
         audioNoise: editProfile.audio_noise !== false,
         clientrectsNoise: editProfile.clientrects_noise !== false,
+        fontNoise: editProfile.font_noise !== false,
+        portScanProtection: editProfile.port_scan_protection !== false,
+        batterySpoof: editProfile.battery_spoof !== false,
         mediaMic: String(editProfile.media_mic ?? 1),
         mediaCam: String(editProfile.media_cam ?? 1),
         mediaSpk: String(editProfile.media_spk ?? 1),
@@ -432,7 +447,6 @@ export function ProfileEditDialog({
       setFpDirty(true);
       setProxyCountry(savedMatch?.country || null);
       if (editProfile.proxy && !savedMatch) {
-        // Best-effort parse of the stored proxy string into the "new" fields.
         api.parseProxies(editProfile.proxy).then((res) => {
           const first = res.parsed[0];
           if (first) {
@@ -450,13 +464,16 @@ export function ProfileEditDialog({
     } else {
       const base = initialForm();
       setForm(base);
-      const idx = pickRandomPreset('win');
+      const idx =
+        initialPresetIndex != null && presets[initialPresetIndex]
+          ? initialPresetIndex
+          : pickRandomPreset('win');
       const p = presets[idx];
       setForm((prev) => ({ ...prev, ...(p ? gridFromPreset(p) : {}) }));
       setResolvedIdx(idx);
-      setPresetVal('random');
+      setPresetVal(initialPresetIndex != null ? String(idx) : 'random');
     }
-  }, [isOpen, editProfile?.name]);
+  }, [isOpen, editProfile?.name, initialPresetIndex]);
 
   function handlePresetChange(value: string) {
     setPresetVal(value);
@@ -471,7 +488,7 @@ export function ProfileEditDialog({
 
   function handleOsChange(os: string) {
     if (os === form.os) return;
-    const idx = presetVal === 'random' ? pickRandomPreset(os) : 0;
+    const idx = pickRandomPreset(os);
     setForm((prev) => ({ ...prev, os }));
     setPresetVal('random');
     if (presets[idx] && (!presets[idx].os || presets[idx].os === os)) {
@@ -483,7 +500,20 @@ export function ProfileEditDialog({
     }
   }
 
-  // Debounced consistency validation only when fingerprint-relevant fields change
+  function handleRerollIdentity() {
+    const idx = pickRandomPreset(form.os);
+    const p = presets[idx];
+    setForm((prev) => ({
+      ...prev,
+      seed: randomSeedHex(),
+      ...(p ? gridFromPreset(p) : {}),
+    }));
+    setResolvedIdx(idx);
+    setPresetVal('random');
+    setFpDirty(false);
+    onToast(t.modal.seedRerolled, 'info');
+  }
+
   const validationKey = useMemo(() => {
     return JSON.stringify([
       form.os,
@@ -543,7 +573,7 @@ export function ProfileEditDialog({
 
   const tabs: TabItem<TabId2>[] = [
     { id: 'general', label: t.modal.dialogGeneral, hasError: !!nameError },
-    { id: 'fingerprint', label: t.modal.dialogFingerprint, hasError: fpErrors.length > 0 },
+    { id: 'fingerprint', label: 'Anti-Detect & Fingerprint', hasError: fpErrors.length > 0 },
     { id: 'proxy', label: t.modal.dialogProxy, hasError: false },
     { id: 'advanced', label: t.modal.dialogAdvanced, hasError: false },
   ];
@@ -684,7 +714,14 @@ export function ProfileEditDialog({
 
   async function handleSaveAsTemplate() {
     const suggested = form.name.trim();
-    const tplName = window.prompt(t.modal.saveAsTemplate, suggested);
+    const tplName = await prompt({
+      title: t.modal.saveAsTemplate,
+      description: 'Enter a name for this profile template:',
+      defaultValue: suggested,
+      placeholder: 'Template name...',
+      confirmLabel: 'Save Template',
+      cancelLabel: 'Cancel',
+    });
     if (!tplName || !tplName.trim()) return;
     try {
       const proxy = activeProxy();
@@ -710,15 +747,13 @@ export function ProfileEditDialog({
     void save(false);
   }
 
-  // --- summary panel helpers ---------------------------------------------------
-
   function fixButton(finding: { fix?: Record<string, unknown> | null }) {
     if (!finding.fix) return null;
     return (
       <button
         type="button"
-        className="btn btn-ghost"
-        style={{ height: 22, padding: '0 8px', fontSize: 'var(--text-caption)' }}
+        className="btn btn-secondary"
+        style={{ height: 24, padding: '0 8px', fontSize: 11 }}
         onClick={() => {
           setForm((prev) => applyFix(prev, finding.fix as Record<string, unknown>));
           setFpDirty(true);
@@ -742,27 +777,61 @@ export function ProfileEditDialog({
 
   const summaryProxy = activeProxy();
 
-  const section = (label: string, value: ReactNode) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <span style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}>{label}</span>
+  const activeShields = useMemo(() => {
+    const items: Array<{ label: string; on: boolean }> = [
+      { label: 'Canvas 2D', on: form.canvasNoise },
+      { label: 'WebGL 3D', on: form.webglNoise },
+      { label: 'AudioContext', on: form.audioNoise },
+      { label: 'ClientRects', on: form.clientrectsNoise },
+      { label: 'Font Metrics', on: form.fontNoise },
+      { label: 'Port Shield', on: form.portScanProtection },
+      { label: 'Battery Spoof', on: form.batterySpoof },
+      { label: 'WebRTC Guard', on: form.webrtcMode !== 'real' },
+      { label: 'IP Timezone', on: form.tzMode !== 'system' },
+    ];
+    return items;
+  }, [
+    form.canvasNoise,
+    form.webglNoise,
+    form.audioNoise,
+    form.clientrectsNoise,
+    form.fontNoise,
+    form.portScanProtection,
+    form.batterySpoof,
+    form.webrtcMode,
+    form.tzMode,
+  ]);
+
+  const activeShieldCount = activeShields.filter((s) => s.on).length;
+
+  const summaryRow = (label: string, value: ReactNode, titleText?: string) => (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '5px 0',
+        borderBottom: '1px solid var(--border)',
+      }}
+    >
+      <span style={{ fontSize: 12, color: 'var(--text-tertiary)', flexShrink: 0 }}>{label}</span>
       <span
         style={{
-          fontSize: 'var(--text-label)',
+          fontSize: 12,
+          fontWeight: 500,
           color: 'var(--text-primary)',
           fontFamily: 'var(--font-mono)',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
+          textAlign: 'right',
         }}
-        title={typeof value === 'string' ? value : undefined}
+        title={titleText || (typeof value === 'string' ? value : undefined)}
       >
         {value}
       </span>
     </div>
-  );
-
-  const fieldLabel = (text: string) => (
-    <label className="field-label" style={{ marginTop: 2 }}>{text}</label>
   );
 
   return (
@@ -770,7 +839,7 @@ export function ProfileEditDialog({
       isOpen={isOpen}
       title={editProfile ? t.modal.editProfileTitle(editProfile.name) : t.modal.createProfileTitle}
       onClose={onClose}
-      maxWidth={880}
+      maxWidth={960}
       footer={
         <>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>
@@ -805,20 +874,20 @@ export function ProfileEditDialog({
       <form
         id="profile-edit-form"
         onSubmit={handleSubmit}
-        style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}
+        style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}
       >
-        {/* Left: tabs + panels */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Left: Tabs + Form Sections */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Tabs tabs={tabs} activeTab={tab} onChange={setTab} />
 
           {error && (
             <div
               style={{
-                padding: '6px 10px',
-                backgroundColor: 'var(--accent-subtle)',
+                padding: '8px 12px',
+                backgroundColor: 'rgba(220, 38, 38, 0.08)',
                 border: '1px solid var(--status-danger)',
                 borderRadius: 'var(--radius-control)',
-                fontSize: 12,
+                fontSize: 12.5,
                 color: 'var(--status-danger)',
               }}
             >
@@ -827,435 +896,649 @@ export function ProfileEditDialog({
           )}
 
           {tab === 'general' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                {fieldLabel(t.modal.profileName)}
-                <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                  <Input
-                    value={form.name}
-                    onChange={(e) => set({ name: e.target.value })}
-                    error={nameError}
-                    disabled={!!editProfile}
-                    style={editProfile ? { opacity: 0.7 } : undefined}
-                  />
-                  {!editProfile && (
-                    <IconButton
-                      tooltip={t.modal.shuffleName}
-                      onClick={() => set({ name: randomName() })}
-                      style={{ marginTop: 1, flexShrink: 0 }}
-                    >
-                      <Shuffle size={14} strokeWidth={1.5} />
-                    </IconButton>
-                  )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Profile Name + Folder + Color */}
+              <div className="section-card">
+                <div>
+                  <label className="field-label">{t.modal.profileName}</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <Input
+                        value={form.name}
+                        onChange={(e) => set({ name: e.target.value })}
+                        error={nameError}
+                        disabled={!!editProfile}
+                        style={editProfile ? { opacity: 0.7 } : undefined}
+                      />
+                    </div>
+                    {!editProfile && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        title={t.modal.shuffleName}
+                        onClick={() => set({ name: randomName() })}
+                        style={{ padding: '0 12px', flexShrink: 0 }}
+                      >
+                        <Shuffle size={14} strokeWidth={1.75} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                {fieldLabel(t.modal.folderLabel)}
-                <Combobox
-                  value={form.folder}
-                  onChange={(v) => set({ folder: v })}
-                  options={folders}
-                />
-              </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 14 }}>
+                  <div>
+                    <label className="field-label">{t.modal.folderLabel}</label>
+                    <Combobox
+                      value={form.folder}
+                      onChange={(v) => set({ folder: v })}
+                      options={folders}
+                    />
+                  </div>
 
-              <div>
-                {fieldLabel(t.modal.colorLabel)}
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {LABEL_COLORS.map((c) => (
-                    <button
-                      key={c.value || 'none'}
-                      type="button"
-                      onClick={() => set({ color: c.value })}
-                      aria-label={c.value || 'no color'}
+                  <div>
+                    <label className="field-label">{t.modal.colorLabel}</label>
+                    <div
                       style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 'var(--radius-control)',
-                        border: `1px solid ${form.color === c.value ? 'var(--accent)' : 'var(--border)'}`,
-                        display: 'inline-flex',
+                        height: 'var(--control-height)',
+                        display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        backgroundColor: 'var(--bg-surface)',
+                        gap: 6,
                       }}
                     >
-                      <span
-                        style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: 5,
-                          backgroundColor: c.cssVar,
-                          display: 'block',
-                        }}
-                      />
-                    </button>
-                  ))}
+                      {LABEL_COLORS.map((c) => (
+                        <button
+                          key={c.value || 'none'}
+                          type="button"
+                          onClick={() => set({ color: c.value })}
+                          aria-label={c.value || 'no color'}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 'var(--radius-control)',
+                            border: `2px solid ${
+                              form.color === c.value ? 'var(--accent)' : 'var(--border)'
+                            }`,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            backgroundColor: 'var(--bg-surface)',
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 12,
+                              height: 12,
+                              borderRadius: '50%',
+                              backgroundColor: c.cssVar,
+                              display: 'block',
+                            }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                {fieldLabel(t.modal.tags)}
-                <ChipInput
-                  tags={form.tags}
-                  onChange={(tags) => set({ tags })}
-                  suggestions={existingTags}
-                />
+              {/* Quick Anti-Detect & Hardware Identity Setup right on General Tab */}
+              <div className="section-card">
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Shield size={16} strokeWidth={2} color="var(--accent)" />
+                    <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Anti-Detect & Hardware Identity
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleRerollIdentity}
+                      style={{ height: 28, padding: '0 10px', fontSize: 12 }}
+                    >
+                      <RefreshCw size={12} strokeWidth={1.75} />
+                      <span>Randomize Identity</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => setTab('fingerprint')}
+                      style={{ height: 28, padding: '0 10px', fontSize: 12 }}
+                    >
+                      <Sliders size={12} strokeWidth={1.75} />
+                      <span>Advanced Anti-Detect</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 14, alignItems: 'end' }}>
+                  <div>
+                    <label className="field-label">{t.modal.osLabel}</label>
+                    <SegmentedControl
+                      value={form.os}
+                      onChange={handleOsChange}
+                      options={[
+                        { value: 'win', label: t.modal.osWindows },
+                        { value: 'mac', label: t.modal.osMac },
+                        { value: 'linux', label: t.modal.osLinux },
+                      ]}
+                    />
+                  </div>
+
+                  <div style={{ minWidth: 0 }}>
+                    <label className="field-label">{t.modal.preset} ({osPresets.length} templates)</label>
+                    <Select
+                      value={presetVal}
+                      onChange={(e) => handlePresetChange(e.target.value)}
+                    >
+                      <option value="random">{t.modal.presetRandom}</option>
+                      {osPresets.map(({ p, idx }) => (
+                        <option key={idx} value={String(idx)}>
+                          {p.label ||
+                            `${p.name || p.webgl_renderer || 'Standard'} · ${presetNum(p)}C/${presetMem(p)}GB · ${presetScreen(p)[0]}x${presetScreen(p)[1]}`}
+                        </option>
+                      ))}
+                      <option value="custom">{t.modal.customOption}</option>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Quick Anti-Detect Toggles */}
+                <div
+                  style={{
+                    borderTop: '1px solid var(--border)',
+                    paddingTop: 10,
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: 10,
+                  }}
+                >
+                  <Switch
+                    checked={form.canvasNoise}
+                    onChange={(v) => set({ canvasNoise: v })}
+                    label="Canvas 2D Noise"
+                  />
+                  <Switch
+                    checked={form.webglNoise}
+                    onChange={(v) => set({ webglNoise: v })}
+                    label="WebGL 3D Spoof"
+                  />
+                  <Switch
+                    checked={form.audioNoise}
+                    onChange={(v) => set({ audioNoise: v })}
+                    label="AudioContext Noise"
+                  />
+                  <Switch
+                    checked={form.clientrectsNoise}
+                    onChange={(v) => set({ clientrectsNoise: v })}
+                    label="ClientRects Jitter"
+                  />
+                  <Switch
+                    checked={form.fontNoise}
+                    onChange={(v) => set({ fontNoise: v })}
+                    label="Font Fingerprint"
+                  />
+                  <Switch
+                    checked={form.portScanProtection}
+                    onChange={(v) => set({ portScanProtection: v })}
+                    label="Port Scan Shield"
+                  />
+                </div>
               </div>
 
-              <div>
-                {fieldLabel(t.modal.notesLabel)}
-                <Textarea
-                  value={form.notes}
-                  onChange={(e) => set({ notes: e.target.value })}
-                  style={{ minHeight: 72 }}
-                />
+              {/* Tags & Notes */}
+              <div className="section-card">
+                <div>
+                  <label className="field-label">{t.modal.tags}</label>
+                  <ChipInput
+                    tags={form.tags}
+                    onChange={(tags) => set({ tags })}
+                    suggestions={existingTags}
+                  />
+                </div>
+
+                <div>
+                  <label className="field-label">{t.modal.notesLabel}</label>
+                  <Textarea
+                    value={form.notes}
+                    onChange={(e) => set({ notes: e.target.value })}
+                    placeholder="Tambahkan catatan akun, email, atau keterangan profil..."
+                    style={{ minHeight: 68 }}
+                  />
+                </div>
               </div>
             </div>
           )}
 
           {tab === 'fingerprint' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                {fieldLabel(t.modal.osLabel)}
-                <SegmentedControl
-                  value={form.os}
-                  onChange={handleOsChange}
-                  options={[
-                    { value: 'win', label: t.modal.osWindows },
-                    { value: 'mac', label: t.modal.osMac },
-                    { value: 'linux', label: t.modal.osLinux },
-                  ]}
-                  size="sm"
-                />
-              </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Card 1: Hardware & Device Specification */}
+              <div className="section-card">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Hardware & Browser Emulation
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t.modal.seedLabel}:</span>
+                    <code
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 12,
+                        color: 'var(--accent)',
+                        backgroundColor: 'var(--accent-subtle)',
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                      }}
+                    >
+                      {form.seed}
+                    </code>
+                    <IconButton
+                      tooltip={t.modal.seedRegenerate}
+                      size="sm"
+                      onClick={handleRerollIdentity}
+                    >
+                      <RefreshCw size={13} strokeWidth={1.75} />
+                    </IconButton>
+                  </div>
+                </div>
 
-              <div>
-                {fieldLabel(t.modal.preset)}
-                <Select
-                  value={presetVal}
-                  onChange={(e) => handlePresetChange(e.target.value)}
-                >
-                  <option value="random">{t.modal.presetRandom}</option>
-                  {osPresets.map(({ p, idx }) => (
-                    <option key={idx} value={String(idx)}>
-                      {p.label || `${p.name || p.webgl_renderer || 'Standard'} · ${presetNum(p)}C/${presetMem(p)}GB · ${presetScreen(p)[0]}x${presetScreen(p)[1]}`}
-                    </option>
-                  ))}
-                  <option value="custom">{t.modal.customOption}</option>
-                </Select>
-              </div>
-
-              {presetVal !== 'custom' && !fpDirty && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <Switch
-                    checked={form.diversify}
-                    onChange={(v) => set({ diversify: v })}
-                    label={t.modal.diversify}
-                  />
-                  <span className="field-hint">{t.modal.diversifyHint}</span>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="field-label" style={{ margin: 0 }}>{t.modal.seedLabel}</span>
-                <code
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 12,
-                    color: 'var(--text-secondary)',
-                    letterSpacing: 0.5,
-                  }}
-                >
-                  {form.seed}
-                </code>
-                <IconButton
-                  tooltip={t.modal.seedRegenerate}
-                  size="sm"
-                  onClick={() => {
-                    set({ seed: randomSeedHex() });
-                    onToast(t.modal.seedRerolled, 'info');
-                  }}
-                >
-                  <RefreshCw size={13} strokeWidth={1.5} />
-                </IconButton>
-              </div>
-
-              <div className="fp-grid">
-                <div>
-                  <label className="field-label">{t.modal.platform}</label>
-                  <Select
-                    value={form.platform}
-                    onChange={(e) => {
-                      set({ platform: e.target.value });
-                      setFpDirty(true);
-                    }}
-                  >
-                    <option value="Win32">Win32</option>
-                    <option value="MacIntel">MacIntel</option>
-                    <option value="Linux x86_64">Linux x86_64</option>
-                  </Select>
-                </div>
-                <div>
-                  <label className="field-label">{t.modal.cores}</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={128}
-                    value={form.cores}
-                    onChange={(e) => {
-                      set({ cores: e.target.value });
-                      setFpDirty(true);
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="field-label">{t.modal.ram}</label>
-                  <Select
-                    value={form.memory}
-                    onChange={(e) => {
-                      set({ memory: e.target.value });
-                      setFpDirty(true);
-                    }}
-                  >
-                    {['0.25', '0.5', '1', '2', '4', '8'].map((m) => (
-                      <option key={m} value={m}>{m} GB</option>
-                    ))}
-                  </Select>
-                </div>
-                <div>
-                  <label className="field-label">{t.modal.colorDepth}</label>
-                  <Select
-                    value={form.colorDepth}
-                    onChange={(e) => {
-                      set({ colorDepth: e.target.value });
-                      setFpDirty(true);
-                    }}
-                  >
-                    <option value="24">24-bit</option>
-                    <option value="30">30-bit</option>
-                  </Select>
-                </div>
-                <div>
-                  <label className="field-label">{t.modal.resWidth}</label>
-                  <Input
-                    type="number"
-                    min={400}
-                    max={7680}
-                    value={form.width}
-                    onChange={(e) => {
-                      set({ width: e.target.value });
-                      setFpDirty(true);
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="field-label">{t.modal.resHeight}</label>
-                  <Input
-                    type="number"
-                    min={400}
-                    max={7680}
-                    value={form.height}
-                    onChange={(e) => {
-                      set({ height: e.target.value });
-                      setFpDirty(true);
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="field-label">{t.modal.dprLabel}</label>
-                  <Select
-                    value={form.dpr}
-                    onChange={(e) => {
-                      set({ dpr: e.target.value });
-                      setFpDirty(true);
-                    }}
-                  >
-                    {['1', '1.25', '1.5', '2'].map((d) => (
-                      <option key={d} value={d}>{d}x</option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="fp-full">
-                  <label className="field-label">{t.modal.webglVendor}</label>
-                  <Input
-                    value={form.vendor}
-                    onChange={(e) => {
-                      set({ vendor: e.target.value });
-                      setFpDirty(true);
-                    }}
-                    placeholder="Google Inc. (NVIDIA)"
-                  />
-                </div>
-                <div className="fp-full">
-                  <label className="field-label">{t.modal.webglRenderer}</label>
-                  <Input
-                    value={form.renderer}
-                    onChange={(e) => {
-                      set({ renderer: e.target.value });
-                      setFpDirty(true);
-                    }}
-                    placeholder="ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)"
-                  />
-                </div>
-                <div className="fp-full">
-                  <label className="field-label">{t.modal.userAgent}</label>
-                  <Input
-                    value={form.userAgent}
-                    onChange={(e) => {
-                      set({ userAgent: e.target.value });
-                      setFpDirty(true);
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                {fieldLabel(t.modal.languageMode)}
-                <SegmentedControl
-                  value={form.langMode}
-                  onChange={(v) => set({ langMode: v as FormState['langMode'] })}
-                  options={[
-                    { value: 'proxy', label: t.modal.langModeProxy },
-                    { value: 'manual', label: t.modal.langModeManual },
-                  ]}
-                  size="sm"
-                />
-                {form.langMode === 'manual' && (
-                  <Input
-                    value={form.languages}
-                    onChange={(e) => {
-                      set({ languages: e.target.value });
-                      setFpDirty(true);
-                    }}
-                    style={{ marginTop: 6 }}
-                    placeholder="id-ID, id, en-US, en"
-                  />
-                )}
-              </div>
-
-              <div>
-                {fieldLabel(t.modal.timezoneLabel)}
-                <SegmentedControl
-                  value={form.tzMode}
-                  onChange={(v) => set({ tzMode: v as FormState['tzMode'] })}
-                  options={[
-                    { value: 'proxy', label: t.modal.tzModeProxy },
-                    { value: 'manual', label: t.modal.tzModeManual },
-                    { value: 'system', label: 'System' },
-                  ]}
-                  size="sm"
-                />
-                {form.tzMode === 'manual' && (
-                  <Input
-                    value={form.timezone}
-                    onChange={(e) => set({ timezone: e.target.value })}
-                    style={{ marginTop: 6 }}
-                    placeholder="Asia/Jakarta"
-                  />
-                )}
-              </div>
-
-              <div>
-                {fieldLabel(t.modal.geoLabel)}
-                <SegmentedControl
-                  value={form.geoMode}
-                  onChange={(v) => set({ geoMode: v as FormState['geoMode'] })}
-                  options={[
-                    { value: 'block', label: t.modal.geoBlock },
-                    { value: 'proxy', label: t.modal.geoProxy },
-                    { value: 'manual', label: 'Manual' },
-                  ]}
-                  size="sm"
-                />
-                {form.geoMode === 'manual' && (
-                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                    <Input
-                      value={form.geoLat}
-                      onChange={(e) => set({ geoLat: e.target.value })}
-                      placeholder="-6.2"
-                    />
-                    <Input
-                      value={form.geoLon}
-                      onChange={(e) => set({ geoLon: e.target.value })}
-                      placeholder="106.8"
-                    />
-                    <Input
-                      value={form.geoAcc}
-                      onChange={(e) => set({ geoAcc: e.target.value })}
-                      placeholder="100"
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 12, alignItems: 'end' }}>
+                  <div>
+                    <label className="field-label">{t.modal.osLabel}</label>
+                    <SegmentedControl
+                      value={form.os}
+                      onChange={handleOsChange}
+                      options={[
+                        { value: 'win', label: t.modal.osWindows },
+                        { value: 'mac', label: t.modal.osMac },
+                        { value: 'linux', label: t.modal.osLinux },
+                      ]}
                     />
                   </div>
+
+                  <div style={{ minWidth: 0 }}>
+                    <label className="field-label">{t.modal.preset}</label>
+                    <Select
+                      value={presetVal}
+                      onChange={(e) => handlePresetChange(e.target.value)}
+                    >
+                      <option value="random">{t.modal.presetRandom}</option>
+                      {osPresets.map(({ p, idx }) => (
+                        <option key={idx} value={String(idx)}>
+                          {p.label ||
+                            `${p.name || p.webgl_renderer || 'Standard'} · ${presetNum(p)}C/${presetMem(p)}GB · ${presetScreen(p)[0]}x${presetScreen(p)[1]}`}
+                        </option>
+                      ))}
+                      <option value="custom">{t.modal.customOption}</option>
+                    </Select>
+                  </div>
+                </div>
+
+                {presetVal !== 'custom' && !fpDirty && (
+                  <div>
+                    <Switch
+                      checked={form.diversify}
+                      onChange={(v) => set({ diversify: v })}
+                      label={t.modal.diversify}
+                    />
+                    <span className="field-hint">{t.modal.diversifyHint}</span>
+                  </div>
                 )}
-              </div>
 
-              <div>
-                {fieldLabel(t.modal.webrtcLabel)}
-                <SegmentedControl
-                  value={form.webrtcMode}
-                  onChange={(v) => set({ webrtcMode: v as FormState['webrtcMode'] })}
-                  options={[
-                    { value: 'disabled', label: t.modal.webrtcDisabled },
-                    { value: 'altered', label: t.modal.webrtcAltered },
-                    { value: 'real', label: t.modal.webrtcReal },
-                  ]}
-                  size="sm"
-                />
-              </div>
-
-              <div>
-                {fieldLabel(t.modal.noiseLabel)}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
-                  <Switch checked={form.canvasNoise} onChange={(v) => set({ canvasNoise: v })} label={t.modal.noiseCanvas} />
-                  <Switch checked={form.webglNoise} onChange={(v) => set({ webglNoise: v })} label={t.modal.noiseWebgl} />
-                  <Switch checked={form.audioNoise} onChange={(v) => set({ audioNoise: v })} label={t.modal.noiseAudio} />
-                  <Switch checked={form.clientrectsNoise} onChange={(v) => set({ clientrectsNoise: v })} label={t.modal.noiseClientrects} />
+                <div className="fp-grid">
+                  <div>
+                    <label className="field-label">{t.modal.platform}</label>
+                    <Select
+                      value={form.platform}
+                      onChange={(e) => {
+                        set({ platform: e.target.value });
+                        setFpDirty(true);
+                      }}
+                    >
+                      <option value="Win32">Win32</option>
+                      <option value="MacIntel">MacIntel</option>
+                      <option value="Linux x86_64">Linux x86_64</option>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="field-label">{t.modal.cores}</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={128}
+                      value={form.cores}
+                      onChange={(e) => {
+                        set({ cores: e.target.value });
+                        setFpDirty(true);
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">{t.modal.ram}</label>
+                    <Select
+                      value={form.memory}
+                      onChange={(e) => {
+                        set({ memory: e.target.value });
+                        setFpDirty(true);
+                      }}
+                    >
+                      {['0.25', '0.5', '1', '2', '4', '8'].map((m) => (
+                        <option key={m} value={m}>{m} GB</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="field-label">{t.modal.colorDepth}</label>
+                    <Select
+                      value={form.colorDepth}
+                      onChange={(e) => {
+                        set({ colorDepth: e.target.value });
+                        setFpDirty(true);
+                      }}
+                    >
+                      <option value="24">24-bit</option>
+                      <option value="30">30-bit</option>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="field-label">{t.modal.resWidth}</label>
+                    <Input
+                      type="number"
+                      min={400}
+                      max={7680}
+                      value={form.width}
+                      onChange={(e) => {
+                        set({ width: e.target.value });
+                        setFpDirty(true);
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">{t.modal.resHeight}</label>
+                    <Input
+                      type="number"
+                      min={400}
+                      max={7680}
+                      value={form.height}
+                      onChange={(e) => {
+                        set({ height: e.target.value });
+                        setFpDirty(true);
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">{t.modal.dprLabel}</label>
+                    <Select
+                      value={form.dpr}
+                      onChange={(e) => {
+                        set({ dpr: e.target.value });
+                        setFpDirty(true);
+                      }}
+                    >
+                      {['1', '1.25', '1.5', '2'].map((d) => (
+                        <option key={d} value={d}>{d}x</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="field-label">{t.modal.webglVendor}</label>
+                    <Input
+                      value={form.vendor}
+                      onChange={(e) => {
+                        set({ vendor: e.target.value });
+                        setFpDirty(true);
+                      }}
+                      placeholder="Google Inc. (NVIDIA)"
+                    />
+                  </div>
+                  <div className="fp-full">
+                    <label className="field-label">{t.modal.webglRenderer}</label>
+                    <Input
+                      value={form.renderer}
+                      onChange={(e) => {
+                        set({ renderer: e.target.value });
+                        setFpDirty(true);
+                      }}
+                      placeholder="ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)"
+                    />
+                  </div>
+                  <div className="fp-full">
+                    <label className="field-label">{t.modal.userAgent}</label>
+                    <Input
+                      value={form.userAgent}
+                      onChange={(e) => {
+                        set({ userAgent: e.target.value });
+                        setFpDirty(true);
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div>
-                {fieldLabel(t.modal.mediaLabel)}
-                <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={4}
-                    value={form.mediaMic}
-                    onChange={(e) => set({ mediaMic: e.target.value })}
-                    sizeVariant="sm"
+              {/* Card 2: Anti-Detect Shield & Fingerprint Noise */}
+              <div className="section-card">
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Anti-Detect Shield & Fingerprint Noise
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Switch
+                    checked={form.canvasNoise}
+                    onChange={(v) => set({ canvasNoise: v })}
+                    label="Canvas 2D Noise (getImageData / toDataURL)"
                   />
-                  <Input
-                    type="number"
-                    min={0}
-                    max={4}
-                    value={form.mediaCam}
-                    onChange={(e) => set({ mediaCam: e.target.value })}
-                    sizeVariant="sm"
+                  <Switch
+                    checked={form.webglNoise}
+                    onChange={(v) => set({ webglNoise: v })}
+                    label="WebGL 3D & ReadPixels Noise"
                   />
-                  <Input
-                    type="number"
-                    min={0}
-                    max={4}
-                    value={form.mediaSpk}
-                    onChange={(e) => set({ mediaSpk: e.target.value })}
-                    sizeVariant="sm"
+                  <Switch
+                    checked={form.audioNoise}
+                    onChange={(v) => set({ audioNoise: v })}
+                    label="AudioContext Signal Perturbation"
                   />
-                </div>
-                <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-                  <span className="field-hint">{t.modal.mediaMic}</span>
-                  <span className="field-hint">{t.modal.mediaCam}</span>
-                  <span className="field-hint">{t.modal.mediaSpk}</span>
+                  <Switch
+                    checked={form.clientrectsNoise}
+                    onChange={(v) => set({ clientrectsNoise: v })}
+                    label="ClientRects DOM Sub-pixel Jitter"
+                  />
+                  <Switch
+                    checked={form.fontNoise}
+                    onChange={(v) => set({ fontNoise: v })}
+                    label="Font Metrics Fingerprint Masking"
+                  />
+                  <Switch
+                    checked={form.portScanProtection}
+                    onChange={(v) => set({ portScanProtection: v })}
+                    label="Localhost Port Scan Protection"
+                  />
+                  <Switch
+                    checked={form.batterySpoof}
+                    onChange={(v) => set({ batterySpoof: v })}
+                    label="Battery & Power Status Spoofing"
+                  />
+                  <Switch
+                    checked={form.dnt}
+                    onChange={(v) => set({ dnt: v })}
+                    label={t.modal.dntLabel}
+                  />
                 </div>
               </div>
 
-              <Switch checked={form.dnt} onChange={(v) => set({ dnt: v })} label={t.modal.dntLabel} />
+              {/* Card 3: Network Environment & IP Auto-Match */}
+              <div className="section-card">
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Environment & Browser IP Auto-Match (VPN / Proxy)
+                </span>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <div>
+                    <label className="field-label">{t.modal.timezoneLabel}</label>
+                    <SegmentedControl
+                      size="sm"
+                      value={form.tzMode}
+                      onChange={(v) => set({ tzMode: v as FormState['tzMode'] })}
+                      options={[
+                        { value: 'proxy', label: t.modal.tzModeProxy },
+                        { value: 'manual', label: t.modal.tzModeManual },
+                        { value: 'system', label: 'System' },
+                      ]}
+                    />
+                    {form.tzMode === 'manual' && (
+                      <div style={{ marginTop: 8 }}>
+                        <Input
+                          value={form.timezone}
+                          onChange={(e) => set({ timezone: e.target.value })}
+                          placeholder="Asia/Jakarta"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="field-label">{t.modal.languageMode}</label>
+                    <SegmentedControl
+                      size="sm"
+                      value={form.langMode}
+                      onChange={(v) => set({ langMode: v as FormState['langMode'] })}
+                      options={[
+                        { value: 'proxy', label: t.modal.langModeProxy },
+                        { value: 'manual', label: t.modal.langModeManual },
+                      ]}
+                    />
+                    {form.langMode === 'manual' && (
+                      <div style={{ marginTop: 8 }}>
+                        <Input
+                          value={form.languages}
+                          onChange={(e) => {
+                            set({ languages: e.target.value });
+                            setFpDirty(true);
+                          }}
+                          placeholder="id-ID, id, en-US, en"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <div>
+                    <label className="field-label">{t.modal.geoLabel}</label>
+                    <SegmentedControl
+                      size="sm"
+                      value={form.geoMode}
+                      onChange={(v) => set({ geoMode: v as FormState['geoMode'] })}
+                      options={[
+                        { value: 'block', label: t.modal.geoBlock },
+                        { value: 'proxy', label: t.modal.geoProxy },
+                        { value: 'manual', label: 'Manual' },
+                      ]}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="field-label">{t.modal.webrtcLabel}</label>
+                    <SegmentedControl
+                      size="sm"
+                      value={form.webrtcMode}
+                      onChange={(v) => set({ webrtcMode: v as FormState['webrtcMode'] })}
+                      options={[
+                        { value: 'disabled', label: t.modal.webrtcDisabled },
+                        { value: 'altered', label: t.modal.webrtcAltered },
+                        { value: 'real', label: t.modal.webrtcReal },
+                      ]}
+                    />
+                  </div>
+                </div>
+
+                {form.geoMode === 'manual' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                    <div>
+                      <label className="field-label">Latitude</label>
+                      <Input
+                        value={form.geoLat}
+                        onChange={(e) => set({ geoLat: e.target.value })}
+                        placeholder="-6.2"
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label">Longitude</label>
+                      <Input
+                        value={form.geoLon}
+                        onChange={(e) => set({ geoLon: e.target.value })}
+                        placeholder="106.8"
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label">Accuracy (m)</label>
+                      <Input
+                        value={form.geoAcc}
+                        onChange={(e) => set({ geoAcc: e.target.value })}
+                        placeholder="100"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="field-label">{t.modal.mediaLabel}</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                    <div>
+                      <span className="field-hint" style={{ marginTop: 0, marginBottom: 4 }}>
+                        {t.modal.mediaMic}
+                      </span>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={4}
+                        value={form.mediaMic}
+                        onChange={(e) => set({ mediaMic: e.target.value })}
+                        sizeVariant="sm"
+                      />
+                    </div>
+                    <div>
+                      <span className="field-hint" style={{ marginTop: 0, marginBottom: 4 }}>
+                        {t.modal.mediaCam}
+                      </span>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={4}
+                        value={form.mediaCam}
+                        onChange={(e) => set({ mediaCam: e.target.value })}
+                        sizeVariant="sm"
+                      />
+                    </div>
+                    <div>
+                      <span className="field-hint" style={{ marginTop: 0, marginBottom: 4 }}>
+                        {t.modal.mediaSpk}
+                      </span>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={4}
+                        value={form.mediaSpk}
+                        onChange={(e) => set({ mediaSpk: e.target.value })}
+                        sizeVariant="sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
           {tab === 'proxy' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="section-card">
               <div>
-                {fieldLabel(t.modal.proxySource)}
+                <label className="field-label">{t.modal.proxySource}</label>
                 <SegmentedControl
                   value={form.proxySource}
                   onChange={(v) => set({ proxySource: v as ProxySource })}
@@ -1264,13 +1547,12 @@ export function ProfileEditDialog({
                     { value: 'saved', label: t.modal.proxySaved },
                     { value: 'new', label: t.modal.proxyNew },
                   ]}
-                  size="sm"
                 />
               </div>
 
               {form.proxySource === 'saved' && (
                 <div>
-                  {fieldLabel(t.modal.proxySaved)}
+                  <label className="field-label">{t.modal.proxySaved}</label>
                   {proxies.length === 0 ? (
                     <span className="field-hint">{t.empty.proxiesEmptyTitle}</span>
                   ) : (
@@ -1318,34 +1600,38 @@ export function ProfileEditDialog({
                     </div>
                     <div className="fp-full">
                       <label className="field-label">{t.modal.proxyPass}</label>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                        <Input
-                          type={showPass ? 'text' : 'password'}
-                          value={form.newPass}
-                          onChange={(e) => set({ newPass: e.target.value })}
-                        />
-                        <IconButton
-                          tooltip={showPass ? t.modal.proxyHide : t.modal.proxyShow}
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <div style={{ flex: 1 }}>
+                          <Input
+                            type={showPass ? 'text' : 'password'}
+                            value={form.newPass}
+                            onChange={(e) => set({ newPass: e.target.value })}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          title={showPass ? t.modal.proxyHide : t.modal.proxyShow}
                           onClick={() => setShowPass((v) => !v)}
-                          style={{ marginTop: 1, flexShrink: 0 }}
+                          style={{ padding: '0 12px', flexShrink: 0 }}
                         >
-                          {showPass ? <EyeOff size={14} strokeWidth={1.5} /> : <Eye size={14} strokeWidth={1.5} />}
-                        </IconButton>
+                          {showPass ? <EyeOff size={14} strokeWidth={1.75} /> : <Eye size={14} strokeWidth={1.75} />}
+                        </button>
                       </div>
                     </div>
                   </div>
 
                   <div>
-                    {fieldLabel(t.modal.pasteBox)}
+                    <label className="field-label">{t.modal.pasteBox}</label>
                     <Textarea
                       value={pasteText}
                       onChange={(e) => setPasteText(e.target.value)}
                       placeholder={t.modal.pasteHint}
                       style={{ minHeight: 56, fontFamily: 'var(--font-mono)', fontSize: 12 }}
                     />
-                    <div className="field-hint" style={{ marginTop: 4 }}>{t.modal.pasteHint}</div>
+                    <span className="field-hint">{t.modal.pasteHint}</span>
                     <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                      <button type="button" className="btn btn-ghost" onClick={handleParse}>
+                      <button type="button" className="btn btn-secondary" onClick={handleParse}>
                         {t.modal.parseBtn}
                       </button>
                     </div>
@@ -1389,26 +1675,26 @@ export function ProfileEditDialog({
                     </div>
                   )}
 
-                  <div className="field-hint">{t.modal.proxyAuthNote}</div>
+                  <span className="field-hint">{t.modal.proxyAuthNote}</span>
                 </>
               )}
             </div>
           )}
 
           {tab === 'advanced' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="section-card">
               <div>
-                {fieldLabel(t.modal.advStartUrls)}
+                <label className="field-label">{t.modal.advStartUrls}</label>
                 <Textarea
                   value={form.startUrls}
                   onChange={(e) => set({ startUrls: e.target.value })}
                   placeholder={'https://example.com'}
-                  style={{ minHeight: 64, fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                  style={{ minHeight: 68, fontFamily: 'var(--font-mono)', fontSize: 12 }}
                 />
               </div>
 
               <div>
-                {fieldLabel(t.modal.advOnClose)}
+                <label className="field-label">{t.modal.advOnClose}</label>
                 <SegmentedControl
                   value={form.onCloseMode}
                   onChange={(v) => set({ onCloseMode: v as FormState['onCloseMode'] })}
@@ -1417,84 +1703,148 @@ export function ProfileEditDialog({
                     { value: 'clear_cache', label: t.modal.closeClearCache },
                     { value: 'clear_all', label: t.modal.closeClearAll },
                   ]}
-                  size="sm"
                 />
               </div>
 
               <div>
-                {fieldLabel(t.modal.advExtraArgs)}
+                <label className="field-label">{t.modal.advExtraArgs}</label>
                 <Textarea
                   value={form.extraArgs}
                   onChange={(e) => set({ extraArgs: e.target.value })}
                   placeholder="--mute-audio --blink-settings=imageLoadingEnabled=false"
-                  style={{ minHeight: 64, fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                  style={{ minHeight: 68, fontFamily: 'var(--font-mono)', fontSize: 12 }}
                 />
-                <div className="field-hint" style={{ marginTop: 4, color: 'var(--status-warning)' }}>
+                <span className="field-hint" style={{ color: 'var(--status-warning)' }}>
                   {t.modal.advArgsWarning}
-                </div>
+                </span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Right: live summary */}
+        {/* Right: Structured Summary & Anti-Detect Status Card */}
         <div
           style={{
-            width: 280,
+            width: 296,
             flexShrink: 0,
-            alignSelf: 'stretch',
-            borderLeft: '1px solid var(--border)',
-            paddingLeft: 16,
+            backgroundColor: 'var(--bg-base)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-panel)',
+            padding: '16px',
             display: 'flex',
             flexDirection: 'column',
-            gap: 10,
+            gap: 12,
           }}
         >
-          <span style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--text-primary)' }}>
-            {t.modal.dialogSummary}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+              {t.modal.dialogSummary}
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: 'var(--accent)',
+                backgroundColor: 'var(--accent-subtle)',
+                padding: '2px 8px',
+                borderRadius: 99,
+              }}
+            >
+              {activeShieldCount}/{activeShields.length} Shields
+            </span>
+          </div>
 
-          {section(t.modal.summaryOs, OS_LABEL[form.os] || form.os)}
-          {section(
-            t.modal.summaryBrowser,
-            engineVersion ? `Chrome ${engineVersion.split('.')[0]}` : 'Chrome',
-          )}
-          {section(t.modal.summaryGpu, form.renderer || '-')}
-          {section(t.modal.summaryCpu, `${form.cores || '?'}C / ${form.memory || '?'}GB`)}
-          {section(t.modal.summaryScreen, `${form.width || '?'}x${form.height || '?'} @${form.dpr}x`)}
-          {section(
-            t.modal.summaryTimezone,
-            form.tzMode === 'manual'
-              ? form.timezone || '-'
-              : form.tzMode === 'system'
-                ? t.modal.tzModeSystem
-                : t.modal.tzModeProxy,
-          )}
-          {section(
-            t.modal.summaryLanguage,
-            form.langMode === 'manual'
-              ? form.languages.split(',').slice(0, 2).join(', ')
-              : t.modal.langModeProxy,
-          )}
-          {section(
-            t.modal.summaryProxy,
-            summaryProxy
-              ? `${summaryProxy.label}${proxyCountry ? ` · ${proxyCountry}` : ''}`
-              : t.modal.summaryDirect,
-          )}
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {summaryRow(t.modal.summaryOs, OS_LABEL[form.os] || form.os)}
+            {summaryRow(
+              t.modal.summaryBrowser,
+              engineVersion ? `Chrome ${engineVersion.split('.')[0]}` : 'Chrome',
+            )}
+            {summaryRow(
+              t.modal.summaryGpu,
+              parseGpuName(form.renderer) || '-',
+              form.renderer,
+            )}
+            {summaryRow(t.modal.summaryCpu, `${form.cores || '?'}C / ${form.memory || '?'}GB`)}
+            {summaryRow(t.modal.summaryScreen, `${form.width || '?'}×${form.height || '?'} @${form.dpr}x`)}
+            {summaryRow(
+              t.modal.summaryTimezone,
+              form.tzMode === 'manual'
+                ? form.timezone || '-'
+                : form.tzMode === 'system'
+                  ? 'System'
+                  : 'Auto (Browser IP)',
+            )}
+            {summaryRow(
+              t.modal.summaryLanguage,
+              form.langMode === 'manual'
+                ? form.languages.split(',').slice(0, 2).join(', ')
+                : 'Auto (Browser IP)',
+            )}
+            {summaryRow(
+              t.modal.summaryProxy,
+              summaryProxy
+                ? `${summaryProxy.label}${proxyCountry ? ` · ${proxyCountry}` : ''}`
+                : 'Direct / VPN Ext',
+            )}
+          </div>
 
-          <div style={{ borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}>
+          {/* Active Anti-Detect Shield Pills */}
+          <div>
+            <span
+              style={{
+                display: 'block',
+                fontSize: 11,
+                fontWeight: 600,
+                color: 'var(--text-tertiary)',
+                marginBottom: 6,
+              }}
+            >
+              Active Anti-Detect Layers
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {activeShields.map((s) => (
+                <span
+                  key={s.label}
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 500,
+                    padding: '2px 7px',
+                    borderRadius: 6,
+                    backgroundColor: s.on ? 'var(--accent-subtle)' : 'var(--bg-surface)',
+                    color: s.on ? 'var(--accent)' : 'var(--text-tertiary)',
+                    border: `1px solid ${s.on ? 'transparent' : 'var(--border)'}`,
+                  }}
+                >
+                  {s.label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Consistency Score Card */}
+          <div
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-control)',
+              padding: '10px 12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>
                 {t.modal.consistencyScore}
               </span>
-              <span style={{ fontSize: 18, fontWeight: 600, color: scoreColor }}>
+              <span style={{ fontSize: 18, fontWeight: 700, color: scoreColor }}>
                 {score == null ? '-' : score}
               </span>
             </div>
 
             {fpErrors.length === 0 && fpWarnings.length === 0 && score != null && (
-              <span style={{ fontSize: 'var(--text-caption)', color: 'var(--status-success)' }}>
+              <span style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--status-success)' }}>
                 {t.modal.consistencyGood}
               </span>
             )}
@@ -1506,11 +1856,11 @@ export function ProfileEditDialog({
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: 6,
-                  marginTop: 8,
+                  marginTop: 4,
                   padding: '6px 8px',
-                  backgroundColor: 'var(--bg-raised)',
+                  backgroundColor: 'var(--bg-base)',
                   border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-control)',
+                  borderRadius: 6,
                 }}
               >
                 <span
@@ -1520,10 +1870,11 @@ export function ProfileEditDialog({
                     borderRadius: 3,
                     marginTop: 5,
                     flexShrink: 0,
-                    backgroundColor: i < fpErrors.length ? 'var(--status-danger)' : 'var(--status-warning)',
+                    backgroundColor:
+                      i < fpErrors.length ? 'var(--status-danger)' : 'var(--status-warning)',
                   }}
                 />
-                <span style={{ fontSize: 'var(--text-caption)', color: 'var(--text-secondary)', flex: 1 }}>
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1 }}>
                   {f.message}
                 </span>
                 {fixButton(f)}

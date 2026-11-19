@@ -21,6 +21,7 @@ import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Kbd } from './ui/Kbd';
 import { SegmentedControl } from './ui/SegmentedControl';
+import { Select } from './ui/Select';
 
 interface TopBarProps {
   onNewProfile: () => void;
@@ -70,7 +71,7 @@ export function TopBar({
   onBulkAddTag,
   onBulkTrash,
   onDeselectAll,
-  resolvedTheme = 'dark',
+  resolvedTheme = 'light',
   onToggleTheme,
 }: TopBarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -286,28 +287,20 @@ export function TopBar({
 
         {/* Tag Filter (if tags exist) */}
         {allTags.length > 0 && onTagChange && (
-          <select
-            value={selectedTag}
-            onChange={(e) => onTagChange(e.target.value)}
-            style={{
-              height: 'var(--control-height-sm)',
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-control)',
-              padding: '0 8px',
-              fontSize: 'var(--text-label)',
-              color: 'var(--text-secondary)',
-              outline: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            <option value="all">{t.topbar.filterTag}</option>
-            {allTags.map((tag) => (
-              <option key={tag} value={tag}>
-                {tag}
-              </option>
-            ))}
-          </select>
+          <div style={{ width: 140 }}>
+            <Select
+              sizeVariant="sm"
+              value={selectedTag}
+              onChange={(e) => onTagChange(e.target.value)}
+            >
+              <option value="all">{t.topbar.filterTag}</option>
+              {allTags.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </Select>
+          </div>
         )}
 
         {/* Fingerprint Test Ghost Button */}

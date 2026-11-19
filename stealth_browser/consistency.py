@@ -12,6 +12,7 @@ UA_PLATFORM_TOKEN = {
     "mac": "macOS",
     "linux": "Linux",
     "android": "Android",
+    "ios": "iPhone",
     "chromeos": "Chrome OS",
 }
 
@@ -20,7 +21,11 @@ PLATFORM_BY_OS = {
     "win": "Win32",
     "mac": "MacIntel",
     "linux": "Linux x86_64",
+    "android": "Linux armv8l",
+    "ios": "iPhone",
 }
+
+VALID_PLATFORMS = ("Win32", "MacIntel", "Linux x86_64", "iPhone", "iPad", "Linux armv8l", "Linux aarch64")
 
 VALID_DEVICE_MEMORY = (0.25, 0.5, 1, 2, 4, 8)
 
@@ -72,6 +77,12 @@ def gpu_family(renderer: str) -> str:
         return "intel"
     if "amd" in r or "radeon" in r:
         return "amd"
+    if "adreno" in r:
+        return "adreno"
+    if "mali" in r or "immortalis" in r:
+        return "mali"
+    if "xclipse" in r:
+        return "xclipse"
     if "llvmpipe" in r or "swiftshader" in r or "software" in r:
         return "software"
     return "unknown"
@@ -105,10 +116,14 @@ def evaluate(profile: dict, engine_version: str = None, proxy_country: str = Non
     # 1. GPU must match the OS (Apple GPU is Metal-only; D3D11 is Windows-only).
     family = gpu_family(renderer)
     if renderer:
-        if family == "apple" and os_id and os_id != "mac":
+        if family == "apple" and os_id and os_id not in ("mac", "ios"):
             add(errors, "gpu_os",
-                "Apple GPU hanya mungkin di macOS.",
+                "Apple GPU hanya mungkin di macOS atau iOS.",
                 {"os": "mac", "platform": "MacIntel"})
+        if family in ("adreno", "mali", "xclipse") and os_id and os_id != "android":
+            add(errors, "gpu_os",
+                "GPU Adreno/Mali/Xclipse hanya ada di Android.",
+                {"os": "android", "platform": "Linux armv8l"})
         if family in ("nvidia", "intel", "amd") and "d3d11" in renderer.lower() and os_id and os_id != "win":
             add(errors, "gpu_os",
                 "Renderer Direct3D11 hanya ada di Windows.",
@@ -128,7 +143,7 @@ def evaluate(profile: dict, engine_version: str = None, proxy_country: str = Non
             ua_token = token
             break
     expected_platform = PLATFORM_BY_OS.get(os_id, platform)
-    if platform and platform not in ("Win32", "MacIntel", "Linux x86_64"):
+    if platform and platform not in VALID_PLATFORMS:
         add(errors, "platform",
             f"navigator.platform '{platform}' bukan nilai valid.",
             {"platform": expected_platform or "Win32"})
@@ -141,8 +156,18 @@ def evaluate(profile: dict, engine_version: str = None, proxy_country: str = Non
             add(errors, "platform",
                 "UA bilang macOS tapi navigator.platform bukan MacIntel.",
                 {"platform": "MacIntel"})
+        if ua_token == "iPhone" and platform not in ("iPhone", "iPad"):
+            add(errors, "platform",
+                "UA bilang iPhone tapi navigator.platform bukan iPhone/iPad.",
+                {"platform": "iPhone"})
+        if ua_token == "Android" and not (platform.startswith("Linux arm") or platform.startswith("Linux aarch")):
+            add(errors, "platform",
+                "UA bilang Android tapi navigator.platform bukan Linux ARM.",
+                {"platform": "Linux armv8l"})
         if ua_token == "Linux" and not platform.startswith("Linux"):
             add(errors, "platform",
+                "UA bilang Linux tapi navigator.platform bukan Linux.",
+                {"platform": "Linux x86_64"})
                 "UA bilang Linux tapi navigator.platform bukan Linux.",
                 {"platform": "Linux x86_64"})
 

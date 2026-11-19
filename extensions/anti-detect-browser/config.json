@@ -1,0 +1,41 @@
+{
+  "enabled": true,
+  "profile_name": "Default Profile",
+  "profile_seed": 8392819,
+  "selected_preset_id": "thinkpad-x1-win11",
+  "proxy": {
+    "enabled": false,
+    "scheme": "http",
+    "host": "",
+    "port": 0,
+    "username": "",
+    "password": "",
+    "rotation_url": "",
+    "auto_rotate": true
+  },
+  "ip_info": {
+    "ip": "Direct",
+    "country": "US",
+    "country_name": "United States",
+    "city": "New York",
+    "timezone": "America/New_York",
+    "latitude": 40.7128,
+    "longitude": -74.006,
+    "language": "en-US"
+  },
+  "modules": {
+    "navigator": true,
+    "webgl": true,
+    "canvas": true,
+    "audio": true,
+    "screen": true,
+    "webrtc": true,
+    "timezone_sync": true,
+    "geolocation_sync": true,
+    "client_hints": true,
+    "font_filter": true,
+    "client_rects": true,
+    "iframe_stealth": true
+  },
+  "identitySeed": "test_seed_777"
+}

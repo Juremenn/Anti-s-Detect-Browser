@@ -18,6 +18,7 @@ interface SidebarProps {
   profilesCount: number;
   trashCount: number;
   proxiesCount: number;
+  extensionsCount?: number;
   activeEngine: string;
   runningCount: number;
 }
@@ -28,6 +29,7 @@ export function Sidebar({
   profilesCount,
   trashCount,
   proxiesCount,
+  extensionsCount = 1,
   activeEngine,
   runningCount,
 }: SidebarProps) {
@@ -60,6 +62,7 @@ export function Sidebar({
     {
       id: 'extensions' as TabId,
       label: t.nav.extensions,
+      badge: extensionsCount > 0 ? extensionsCount : undefined,
       icon: Puzzle,
     },
     {
@@ -78,7 +81,7 @@ export function Sidebar({
   return (
     <aside
       style={{
-        width: collapsed ? 56 : 220,
+        width: collapsed ? 60 : 244,
         height: '100%',
         backgroundColor: 'var(--bg-surface)',
         borderRight: '1px solid var(--border)',
@@ -95,32 +98,50 @@ export function Sidebar({
       {/* Sidebar Header */}
       <div
         style={{
-          height: 48,
+          height: 52,
           display: 'flex',
           alignItems: 'center',
           justifyContent: collapsed ? 'center' : 'space-between',
-          padding: collapsed ? '0' : '0 12px 0 16px',
+          padding: collapsed ? '0' : '0 12px 0 14px',
           borderBottom: '1px solid var(--border)',
           gap: 8,
           flexShrink: 0,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
-          <img
-            src="/assets/logo.png"
-            alt="Octo Logo"
-            onError={(e) => {
-              (e.currentTarget as HTMLElement).style.display = 'none';
-            }}
-            style={{ width: 20, height: 20, objectFit: 'contain', flexShrink: 0 }}
-          />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 32 32"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{ flexShrink: 0 }}
+            aria-label="Anti's Detect Browser Logo"
+          >
+            <rect width="32" height="32" rx="8" fill="var(--accent)" />
+            <path
+              d="M16 5.5L25 9.5V16.2C25 21.6 21.1 25.9 16 27.5C10.9 25.9 7 21.6 7 16.2V9.5L16 5.5Z"
+              stroke="#FFFFFF"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+              fill="rgba(255,255,255,0.12)"
+            />
+            <path
+              d="M16 10.5L11.5 21.5M16 10.5L20.5 21.5M13.2 17.8H18.8"
+              stroke="#FFFFFF"
+              strokeWidth="2.1"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle cx="16" cy="14.2" r="1.4" fill="#A5F3FC" />
+          </svg>
           {!collapsed && (
             <span
               style={{
-                fontSize: 13,
+                fontSize: 13.5,
                 fontWeight: 600,
                 color: 'var(--text-primary)',
-                letterSpacing: -0.2,
+                letterSpacing: '-0.02em',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -251,7 +272,7 @@ export function Sidebar({
                     fontWeight: 500,
                     padding: '0 6px',
                     borderRadius: 10,
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    backgroundColor: 'var(--bg-raised)',
                     color: isActive ? 'var(--text-primary)' : 'var(--text-tertiary)',
                     fontFamily: 'var(--font-mono)',
                     fontVariantNumeric: 'tabular-nums',
