@@ -229,7 +229,7 @@ asyncio.run(main())
 
 ## 9. Kontributor
 
-- **Nirvana Handika Putra ([@Juremenn](https://github.com/Juremenn))** - Kreator, Peneliti Keamanan Utama & Arsitek Sistem
+- **Juremenn ([@Juremenn](https://github.com/Juremenn))** - Kreator, Peneliti Keamanan Utama & Arsitek Sistem
 - **Antigravity (Google Gemini / Google DeepMind)** - AI Co-Engineer (Mesin Fingerprint, Desktop Shell, React UI & Arsitektur Google OAuth 2.0 PKCE)
 
 ---
@@ -244,4 +244,4 @@ Jika proyek ini bermanfaat bagi pekerjaan Anda, Anda dapat memberikan dukungan m
 
 ## 11. Lisensi
 
-Didistribusikan di bawah [Lisensi MIT](LICENSE). Hak Cipta (c) 2026 Nirvana Handika Putra.
+Didistribusikan di bawah [Lisensi MIT](LICENSE). Hak Cipta (c) 2026 Juremenn.

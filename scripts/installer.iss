@@ -6,7 +6,7 @@
 #endif
 
 #define MyAppName "Anti's Detect Browser"
-#define MyAppPublisher "Nirvana Handika Putra"
+#define MyAppPublisher "Juremenn"
 #define MyAppURL "https://github.com/Juremenn/Anti-s-Detect-Browser"
 #define MyAppExeName "AntiDetectBrowser.exe"
 
