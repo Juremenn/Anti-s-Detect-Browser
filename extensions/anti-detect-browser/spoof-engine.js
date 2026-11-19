@@ -150,12 +150,17 @@
       userAgent: () => state.preset.user_agent,
       appVersion: () => state.preset.user_agent.replace(/^Mozilla\//, ''),
       platform: () => state.preset.platform,
-      vendor: () => (state.preset.os === 'iOS' || state.preset.os === 'macOS' ? 'Apple Computer, Inc.' : 'Google Inc.'),
-      hardwareConcurrency: () => state.preset.hardware_concurrency,
-      deviceMemory: () => state.preset.device_memory,
-      maxTouchPoints: () => state.preset.max_touch_points,
-      languages: () => (state.ipInfo.language ? [state.ipInfo.language, 'en'] : state.preset.languages),
-      language: () => (state.ipInfo.language ? state.ipInfo.language : state.preset.languages[0]),
+      vendor: () => {
+        const os = (state.preset.os || '').toLowerCase();
+        return (os === 'ios' || os === 'mac' || os === 'macos' || state.preset.platform === 'MacIntel' || state.preset.platform === 'iPhone' || state.preset.platform === 'iPad')
+          ? 'Apple Computer, Inc.'
+          : 'Google Inc.';
+      },
+      hardwareConcurrency: () => state.preset.hardware_concurrency || 8,
+      deviceMemory: () => state.preset.device_memory || 8,
+      maxTouchPoints: () => (typeof state.preset.max_touch_points === 'number' ? state.preset.max_touch_points : 0),
+      languages: () => (state.ipInfo.language ? [state.ipInfo.language, 'en'] : (state.preset.languages || ['en-US', 'en'])),
+      language: () => (state.ipInfo.language ? state.ipInfo.language : (state.preset.languages ? state.preset.languages[0] : 'en-US')),
       webdriver: () => false
     };
 
@@ -184,22 +189,36 @@
           { brand: 'Google Chrome', version: '131' }
         ];
 
+        const isMobileDevice = state.preset.category === 'mobile' || (state.preset.max_touch_points && state.preset.max_touch_points > 0);
+        const osNormalized = (state.preset.os || '').toLowerCase();
+        const clientPlatform = osNormalized === 'win' || osNormalized === 'windows' ? 'Windows'
+          : osNormalized === 'mac' || osNormalized === 'macos' ? 'macOS'
+          : osNormalized === 'ios' ? 'iOS'
+          : osNormalized === 'android' ? 'Android'
+          : 'Windows';
+
         const userAgentDataProxy = {
           brands: brandsList,
-          mobile: state.preset.category === 'mobile',
-          platform: state.preset.os,
+          mobile: isMobileDevice,
+          platform: clientPlatform,
           getHighEntropyValues: maskNative(function (hints) {
             return new Promise((resolve) => {
               const res = {
                 brands: brandsList,
-                mobile: state.preset.category === 'mobile',
-                platform: state.preset.os
+                mobile: isMobileDevice,
+                platform: clientPlatform
               };
               if (Array.isArray(hints)) {
-                if (hints.includes('architecture')) res.architecture = state.preset.sec_ch_ua_arch ? state.preset.sec_ch_ua_arch.replace(/"/g, '') : 'x86';
+                if (hints.includes('architecture')) {
+                  res.architecture = (osNormalized === 'mac' || osNormalized === 'ios' || osNormalized === 'android') ? 'arm' : 'x86';
+                }
                 if (hints.includes('bitness')) res.bitness = '64';
-                if (hints.includes('model')) res.model = state.preset.sec_ch_ua_model ? state.preset.sec_ch_ua_model.replace(/"/g, '') : '';
-                if (hints.includes('platformVersion')) res.platformVersion = state.preset.platform_version || '15.0.0';
+                if (hints.includes('model')) {
+                  res.model = state.preset.model || (state.preset.sec_ch_ua_model ? state.preset.sec_ch_ua_model.replace(/"/g, '') : '');
+                }
+                if (hints.includes('platformVersion')) {
+                  res.platformVersion = state.preset.platform_version || (osNormalized === 'win' ? '15.0.0' : osNormalized === 'mac' ? '14.5.0' : osNormalized === 'ios' ? '17.5.0' : '14.0.0');
+                }
                 if (hints.includes('uaFullVersion')) res.uaFullVersion = '131.0.6778.86';
                 if (hints.includes('fullVersionList')) {
                   res.fullVersionList = [
@@ -215,8 +234,8 @@
           toJSON: maskNative(function () {
             return {
               brands: brandsList,
-              mobile: state.preset.category === 'mobile',
-              platform: state.preset.os
+              mobile: isMobileDevice,
+              platform: clientPlatform
             };
           }, { name: 'toJSON', length: 0 })
         };

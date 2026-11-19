@@ -168,8 +168,6 @@ def evaluate(profile: dict, engine_version: str = None, proxy_country: str = Non
             add(errors, "platform",
                 "UA bilang Linux tapi navigator.platform bukan Linux.",
                 {"platform": "Linux x86_64"})
-                "UA bilang Linux tapi navigator.platform bukan Linux.",
-                {"platform": "Linux x86_64"})
 
     # 3. deviceMemory: Chrome reports only these steps, capped at 8.
     if memory is not None:
