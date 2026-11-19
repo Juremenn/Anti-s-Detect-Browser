@@ -83,6 +83,7 @@ export interface Preset {
   id?: string;
   name?: string;
   label: string;
+  category?: string;
   os?: string;
   platform: string;
   platform_version?: string;

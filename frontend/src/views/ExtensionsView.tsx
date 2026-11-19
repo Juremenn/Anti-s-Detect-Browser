@@ -18,6 +18,7 @@ import { Drawer } from '../components/ui/Drawer';
 import { Button } from '../components/ui/Button';
 import { Switch } from '../components/ui/Switch';
 import { useConfirm } from '../components/ui/ConfirmDialog';
+import { DevicePicker } from '../components/ui/DevicePicker';
 import { t } from '../i18n';
 
 interface ExtensionsViewProps {
@@ -982,38 +983,13 @@ export function ExtensionsView({ onToast }: ExtensionsViewProps) {
                   Device Identity Preset
                 </label>
 
-                <select
-                  value={activePresetId}
-                  onChange={(e) => setExtConfig((prev) => ({ ...prev, selected_preset_id: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    minWidth: 0,
-                    boxSizing: 'border-box',
-                    height: 36,
-                    padding: '0 12px',
-                    borderRadius: 8,
-                    border: '1px solid #E2E8F0',
-                    fontSize: 13,
-                    backgroundColor: '#FFFFFF',
-                    color: '#0F172A',
-                    outline: 'none',
-                    transition: 'border-color 120ms ease, box-shadow 120ms ease',
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#4F46E5';
-                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(79, 70, 229, 0.12)';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#E2E8F0';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  {extPresets.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.os})
-                    </option>
-                  ))}
-                </select>
+                <DevicePicker
+                  presets={extPresets}
+                  selectedId={activePresetId}
+                  onChange={(presetId) =>
+                    setExtConfig((prev) => ({ ...prev, selected_preset_id: presetId }))
+                  }
+                />
 
                 {currentPreset && (
                   <div
