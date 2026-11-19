@@ -229,8 +229,22 @@ asyncio.run(main())
 
 ## 9. Contributors
 
-- **Juremenn ([@Juremenn](https://github.com/Juremenn))** - Creator, Lead Security Researcher & System Architect
-- **Antigravity (Google Gemini / Google DeepMind)** - AI Co-Engineer (Fingerprint Engine, Desktop Shell, React UI & Google OAuth 2.0 PKCE Architecture)
+<table>
+  <tr>
+    <td align="center" width="160">
+      <a href="https://github.com/Juremenn">
+        <img src="https://github.com/Juremenn.png?size=128" width="72" height="72" alt="Juremenn" /><br />
+        <sub><b>Juremenn</b></sub>
+      </a>
+    </td>
+    <td align="center" width="160">
+      <a href="https://antigravity.google">
+        <img src=".github/assets/antigravity-logo.png" width="72" height="72" alt="Antigravity" /><br />
+        <sub><b>Antigravity</b></sub>
+      </a>
+    </td>
+  </tr>
+</table>
 
 ---
 
