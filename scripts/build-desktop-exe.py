@@ -2,7 +2,8 @@
 """
 Stand-alone Windows desktop executable packager for Anti's Detect Browser.
 Uses PyInstaller to bundle the Python backend, Edge WebView2 shell,
-stealth browser engine, web UI assets, and icon into a production binary.
+stealth browser engine, web UI assets, version metadata, and Authenticode signature
+into a production binary and portable ZIP archive.
 
 Usage:
     python scripts/build-desktop-exe.py [--onefile] [--install-deps]
@@ -13,6 +14,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import zipfile
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -56,14 +58,63 @@ def ensure_icons():
         print("[*] app.ico verified.")
 
 
+def sign_executable_and_export_cert(exe_path: Path, cert_out_path: Path):
+    """Sign AntiDetectBrowser.exe with an Authenticode Code Signing certificate and trust it for CurrentUser."""
+    if sys.platform != "win32":
+        return
+    print("[*] Applying Authenticode SHA-256 digital signature to executable...")
+    ps_script = f"""
+$ErrorActionPreference = 'Stop'
+$subject = "CN=Nirvana Handika Putra, O=Anti's Detect Browser"
+$cert = Get-ChildItem Cert:\\CurrentUser\\My -CodeSigningCert | Where-Object {{ $_.Subject -eq $subject }} | Select-Object -First 1
+if (-not $cert) {{
+    $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject $subject -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -CertStoreLocation "Cert:\\CurrentUser\\My" -NotAfter (Get-Date).AddYears(5)
+}}
+Export-Certificate -Cert $cert -FilePath "{cert_out_path}" -Force | Out-Null
+Import-Certificate -FilePath "{cert_out_path}" -CertStoreLocation "Cert:\\CurrentUser\\TrustedPublisher" | Out-Null
+$sig = Set-AuthenticodeSignature -FilePath "{exe_path}" -Certificate $cert -HashAlgorithm SHA256
+Unblock-File -Path "{exe_path}" -ErrorAction SilentlyContinue
+Write-Host "[+] Authenticode Signature Status: $($sig.StatusMessage) ($($cert.Thumbprint))"
+"""
+    subprocess.check_call(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script])
+
+
+def create_portable_zip(exe_path: Path, cert_path: Path, zip_path: Path):
+    """Create a portable ZIP bundle with an auto-unblocking launcher that clears Mark-of-the-Web."""
+    launcher_bat = """@echo off
+title Anti's Detect Browser
+cd /d "%~dp0"
+
+:: Remove Mark-of-the-Web (Zone.Identifier) and register publisher certificate so SmartScreen does not block execution
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command ^
+  "Unblock-File -Path '%~dp0AntiDetectBrowser.exe' -ErrorAction SilentlyContinue; " ^
+  "if (Test-Path '%~dp0AntiDetectBrowser-Publisher.cer') { " ^
+  "  Import-Certificate -FilePath '%~dp0AntiDetectBrowser-Publisher.cer' -CertStoreLocation 'Cert:\\CurrentUser\\TrustedPublisher' -ErrorAction SilentlyContinue | Out-Null " ^
+  "}"
+
+start "" "%~dp0AntiDetectBrowser.exe"
+exit
+"""
+    license_file = REPO_ROOT / "LICENSE"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.write(exe_path, arcname="AntiDetectBrowser.exe")
+        if cert_path.is_file():
+            zf.write(cert_path, arcname="AntiDetectBrowser-Publisher.cer")
+        if license_file.is_file():
+            zf.write(license_file, arcname="LICENSE.txt")
+        zf.writestr("Buka_Anti_Detect_Browser.bat", launcher_bat.replace("\n", "\r\n"))
+    print(f"[+] Portable ZIP bundle created: {zip_path}")
+
+
 def build_exe(onefile: bool = False):
     ensure_frontend_built()
     ensure_icons()
 
     dist_dir = REPO_ROOT / "dist"
-    build_dir = REPO_ROOT / "build"
     app_ico = REPO_ROOT / "app.ico"
     selfcheck_html = REPO_ROOT / "selfcheck.html"
+    license_file = REPO_ROOT / "LICENSE"
+    version_file = REPO_ROOT / "scripts" / "version_info.txt"
     entry_script = REPO_ROOT / "desktop_app.pyw"
 
     cmd = [
@@ -73,12 +124,14 @@ def build_exe(onefile: bool = False):
         "--noconfirm",
         "--clean",
         "--name=AntiDetectBrowser",
-        "--windowed",  # Suppresses the console window on launch
+        "--windowed",
         f"--icon={app_ico}",
+        f"--version-file={version_file}",
         f"--add-data={REPO_ROOT / 'web_ui'};web_ui",
         f"--add-data={REPO_ROOT / 'stealth_browser'};stealth_browser",
         f"--add-data={app_ico};.",
         f"--add-data={selfcheck_html};.",
+        f"--add-data={license_file};.",
         "--hidden-import=web_ui_server",
         "--hidden-import=webview",
         "--hidden-import=webview.platforms.winforms",
@@ -100,7 +153,7 @@ def build_exe(onefile: bool = False):
         print("[*] Packaging mode: Single-file executable (--onefile)")
     else:
         cmd.append("--onedir")
-        print("[*] Packaging mode: Directory bundle (--onedir, recommended for fast cold boot)")
+        print("[*] Packaging mode: Directory bundle (--onedir)")
 
     cmd.append(str(entry_script))
 
@@ -112,8 +165,15 @@ def build_exe(onefile: bool = False):
     else:
         exe_path = dist_dir / "AntiDetectBrowser" / "AntiDetectBrowser.exe"
 
+    cert_path = dist_dir / "AntiDetectBrowser-Publisher.cer"
+    sign_executable_and_export_cert(exe_path, cert_path)
+
+    if onefile:
+        zip_path = dist_dir / "AntiDetectBrowser-Portable-v1.0.0.zip"
+        create_portable_zip(exe_path, cert_path, zip_path)
+
     print("\n=======================================================")
-    print(" BUILD SUCCESSFUL")
+    print(" BUILD & AUTHENTICODE SIGNING SUCCESSFUL")
     print(f" Binary location: {exe_path}")
     print("=======================================================")
 
