@@ -1,0 +1,199 @@
+name: Build & Publish Windows Installer Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version tag (e.g. v1.0.0)"
+        required: true
+        default: "v1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-installer:
+    name: Build Windows Setup (.exe) & Extension (.crx)
+    runs-on: windows-latest
+    env:
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_CODE_SIGNING_ENDPOINT: ${{ secrets.AZURE_CODE_SIGNING_ENDPOINT }}
+      AZURE_CODE_SIGNING_ACCOUNT: ${{ secrets.AZURE_CODE_SIGNING_ACCOUNT }}
+      AZURE_CERT_PROFILE_NAME: ${{ secrets.AZURE_CERT_PROFILE_NAME }}
+      WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+      WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release version
+        id: meta
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tag = "${{ github.event.inputs.version }}"
+          } else {
+            $tag = "${{ github.ref_name }}"
+          }
+          if (-not $tag.StartsWith("v")) {
+            $tag = "v$tag"
+          }
+          $ver = $tag.TrimStart("v")
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Resolved Tag: $tag (Version: $ver)"
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pywebview pyinstaller
+
+      - name: Build React Frontend (frontend -> web_ui/)
+        shell: pwsh
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Standalone Chromium Extension (.crx)
+        shell: pwsh
+        run: |
+          python scripts/build-extension.py
+
+      - name: Build PyInstaller --onedir Desktop Application
+        shell: pwsh
+        run: |
+          python scripts/build-desktop-exe.py
+
+      - name: Check Authenticode Signing Configuration
+        id: signing_check
+        shell: pwsh
+        run: |
+          $hasAzure = (-not [string]::IsNullOrWhiteSpace($env:AZURE_TENANT_ID)) -and `
+                      (-not [string]::IsNullOrWhiteSpace($env:AZURE_CLIENT_ID)) -and `
+                      (-not [string]::IsNullOrWhiteSpace($env:AZURE_CLIENT_SECRET)) -and `
+                      (-not [string]::IsNullOrWhiteSpace($env:AZURE_CODE_SIGNING_ENDPOINT)) -and `
+                      (-not [string]::IsNullOrWhiteSpace($env:AZURE_CODE_SIGNING_ACCOUNT)) -and `
+                      (-not [string]::IsNullOrWhiteSpace($env:AZURE_CERT_PROFILE_NAME))
+          $hasPfx = (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_PFX_BASE64)) -and `
+                    (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_PFX_PASSWORD))
+
+          "use_azure=$($hasAzure.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "use_pfx=$($hasPfx.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          if ($hasAzure) {
+            Write-Host "[+] Azure Trusted Signing credentials detected. Will sign application and installer."
+          } elseif ($hasPfx) {
+            Write-Host "[+] PFX Code Signing certificate detected. Will sign application and installer with signtool.exe."
+          } else {
+            Write-Host "[*] Notice: No code-signing secrets (AZURE_* or WINDOWS_PFX_*) configured in repository secrets. Skipping Authenticode signing step gracefully."
+          }
+
+      - name: Sign Application Binary with Azure Trusted Signing (Pre-Installer)
+        if: steps.signing_check.outputs.use_azure == 'true'
+        uses: azure/trusted-signing-action@v0.5.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_CODE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_CODE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE_NAME }}
+          files-folder: "${{ github.workspace }}/dist/AntiDetectBrowser"
+          files-folder-filter: "exe"
+          file-digest: "SHA256"
+          timestamp-rfc3161: "http://timestamp.acs.microsoft.com"
+          timestamp-digest: "SHA256"
+
+      - name: Sign Application Binary with PFX Certificate (Pre-Installer)
+        if: steps.signing_check.outputs.use_azure != 'true' && steps.signing_check.outputs.use_pfx == 'true'
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_PFX_BASE64))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          & $signtool sign /f $pfxPath /p $env:WINDOWS_PFX_PASSWORD /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256 "dist\AntiDetectBrowser\AntiDetectBrowser.exe"
+          Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+
+      - name: Compile Inno Setup Windows Installer
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.meta.outputs.version }}"
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc "/DMyAppVersion=$ver" "scripts\installer.iss"
+
+      - name: Sign Installer Setup.exe with Azure Trusted Signing (Post-Installer)
+        if: steps.signing_check.outputs.use_azure == 'true'
+        uses: azure/trusted-signing-action@v0.5.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_CODE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_CODE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE_NAME }}
+          files-folder: "${{ github.workspace }}/dist"
+          files-folder-filter: "exe"
+          file-digest: "SHA256"
+          timestamp-rfc3161: "http://timestamp.acs.microsoft.com"
+          timestamp-digest: "SHA256"
+
+      - name: Sign Installer Setup.exe with PFX Certificate (Post-Installer)
+        if: steps.signing_check.outputs.use_azure != 'true' && steps.signing_check.outputs.use_pfx == 'true'
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.meta.outputs.version }}"
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_PFX_BASE64))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          & $signtool sign /f $pfxPath /p $env:WINDOWS_PFX_PASSWORD /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256 "dist\AntiDetectBrowser-Setup-v$ver.exe"
+          Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+
+      - name: Generate SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.meta.outputs.version }}"
+          $setupPath = "dist\AntiDetectBrowser-Setup-v$ver.exe"
+          $crxPath = "Extension\anti-detect-browser.crx"
+          $setupHash = (Get-FileHash $setupPath -Algorithm SHA256).Hash.ToLower()
+          $crxHash = (Get-FileHash $crxPath -Algorithm SHA256).Hash.ToLower()
+          $lines = @(
+            "$setupHash  AntiDetectBrowser-Setup-v$ver.exe",
+            "$crxHash  anti-detect-browser.crx"
+          )
+          [IO.File]::WriteAllLines("dist\SHA256SUMS.txt", $lines)
+          Get-Content "dist\SHA256SUMS.txt"
+
+      - name: Publish Artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "Anti's Detect Browser ${{ steps.meta.outputs.tag }} (Official Windows Installer)"
+          generate_release_notes: true
+          files: |
+            dist/AntiDetectBrowser-Setup-v${{ steps.meta.outputs.version }}.exe
+            Extension/anti-detect-browser.crx
+            dist/SHA256SUMS.txt

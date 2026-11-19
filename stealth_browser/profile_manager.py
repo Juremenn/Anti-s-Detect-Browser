@@ -3,6 +3,7 @@ profile_manager.py - Local browser profiles: config, isolated UserData, tags, fo
 """
 
 import json
+import os
 import random
 import re
 import shutil
@@ -16,7 +17,18 @@ from urllib.parse import urlparse
 
 from .fingerprint import derive_identity
 
-_APP_ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+
+def _get_user_data_root() -> Path:
+    if getattr(sys, "frozen", False):
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        base = Path(local_appdata) if local_appdata else (Path.home() / "AppData" / "Local")
+        root = base / "AntiDetectBrowser"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+    return Path(__file__).resolve().parent.parent
+
+
+_APP_ROOT = _get_user_data_root()
 BASE_PROFILES_DIR = _APP_ROOT / "profiles"
 TRASH_DIRNAME = ".trash"
 

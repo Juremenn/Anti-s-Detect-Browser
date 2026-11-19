@@ -37,7 +37,12 @@ from stealth_browser import proxy_utils
 
 PORT = 58888
 BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    _local_appdata = os.environ.get("LOCALAPPDATA")
+    ROOT = (Path(_local_appdata) if _local_appdata else (Path.home() / "AppData" / "Local")) / "AntiDetectBrowser"
+    ROOT.mkdir(parents=True, exist_ok=True)
+else:
+    ROOT = Path(__file__).resolve().parent
 WEB_DIR = BUNDLE_ROOT / "web_ui"
 SETTINGS_FILE = ROOT / "app_settings.json"
 ENV_FILE = ROOT / ".env"

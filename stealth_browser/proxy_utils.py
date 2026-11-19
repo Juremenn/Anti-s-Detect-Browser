@@ -13,6 +13,7 @@ Supported input formats:
 
 import ipaddress
 import json
+import os
 import socket
 import ssl
 import struct
@@ -34,7 +35,11 @@ _ECHO_REQUEST = (
     f"User-Agent: Mozilla/5.0\r\nConnection: close\r\n\r\n"
 ).encode("ascii")
 
-_APP_ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False):
+    _local_appdata = os.environ.get("LOCALAPPDATA")
+    _APP_ROOT = (Path(_local_appdata) if _local_appdata else (Path.home() / "AppData" / "Local")) / "AntiDetectBrowser"
+else:
+    _APP_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = _APP_ROOT / "data"
 
 

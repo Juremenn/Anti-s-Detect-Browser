@@ -103,7 +103,12 @@ class StealthLauncher:
         """
         Collect directories of enabled custom extensions that actually exist on disk.
         """
-        app_root = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+        if getattr(sys, "frozen", False):
+            local_appdata = os.environ.get("LOCALAPPDATA")
+            base = Path(local_appdata) if local_appdata else (Path.home() / "AppData" / "Local")
+            app_root = base / "AntiDetectBrowser"
+        else:
+            app_root = Path(__file__).resolve().parent.parent
         custom_ext_file = app_root / "data" / "custom_extensions.json"
         valid_paths = []
         if custom_ext_file.is_file():

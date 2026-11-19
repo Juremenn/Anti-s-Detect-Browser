@@ -17,7 +17,12 @@ import webview
 
 # Add base directory to sys.path
 BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-BASE_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    _local_appdata = os.environ.get("LOCALAPPDATA")
+    BASE_DIR = (Path(_local_appdata) if _local_appdata else (Path.home() / "AppData" / "Local")) / "AntiDetectBrowser"
+    BASE_DIR.mkdir(parents=True, exist_ok=True)
+else:
+    BASE_DIR = Path(__file__).resolve().parent
 for _p in (str(BUNDLE_DIR), str(BASE_DIR)):
     if _p not in sys.path:
         sys.path.insert(0, _p)

@@ -84,16 +84,16 @@ pip install pywebview playwright
 
 ## 4. Quick Start (Desktop UI)
 
-### Option 1: Download Pre-Built Portable `.exe` (Recommended - No Python Required)
-1. Go to the [**GitHub Releases**](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest) page and download **`AntiDetectBrowser.exe`**.
-2. Double-click **`AntiDetectBrowser.exe`** to launch the native Windows desktop application directly.
-3. Click **Continue with Google** on the login gate to sign in with your Google account.
+### Option 1: Official Windows Installer (`AntiDetectBrowser-Setup-v1.0.0.exe` - Recommended)
+1. Go to the [**GitHub Releases**](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest) page and download **`AntiDetectBrowser-Setup-v1.0.0.exe`** (and optional standalone extension **`anti-detect-browser.crx`**).
+2. Run **`AntiDetectBrowser-Setup-v1.0.0.exe`** to install **Anti's Detect Browser** with a Start Menu entry and optional Desktop shortcut. All profiles, extensions, and Google sign-in sessions are stored safely in `%LOCALAPPDATA%\AntiDetectBrowser\`.
+3. Launch the app and click **Continue with Google** on the login gate to sign in with your Google account.
 
 ### Option 2: Double-Click Launcher (From Source)
 1. Double-click **`Buka_Anti_Detect_Browser.bat`** or **`AntiDetectBrowser.pyw`**.
 2. Click **Continue with Google** on the login gate to sign in through your browser.
 
-### Option 3: Run or Build `.exe` from Terminal
+### Option 3: Run or Build Official Installer from Terminal
 ```bash
 # Run desktop app from Python source
 python desktop_app.pyw
@@ -101,9 +101,14 @@ python desktop_app.pyw
 # Or start the local web server directly (http://127.0.0.1:58888)
 python web_ui_server.py
 
-# Build standalone single-file AntiDetectBrowser.exe (output: dist/AntiDetectBrowser.exe)
-python scripts/build-desktop-exe.py --onefile --install-deps
+# Build full release (Frontend + CRX + PyInstaller --onedir + Inno Setup Installer + SHA256SUMS.txt)
+python scripts/build-release.py
 ```
+
+### CI/CD & Azure Trusted Signing (SmartScreen Reputation)
+The GitHub Actions release pipeline (`.github/workflows/release.yml`) automatically builds `AntiDetectBrowser-Setup-<version>.exe`, `anti-detect-browser.crx`, and `SHA256SUMS.txt` on every `v*` tag push. To enable automated Authenticode code-signing for instant Windows SmartScreen trust, add the following GitHub Repository Secrets:
+- **Azure Trusted Signing**: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_CODE_SIGNING_ENDPOINT`, `AZURE_CODE_SIGNING_ACCOUNT`, `AZURE_CERT_PROFILE_NAME`.
+- **Or Standard PFX Certificate**: `WINDOWS_PFX_BASE64`, `WINDOWS_PFX_PASSWORD`.
 
 ### Rebuilding the Frontend UI (Optional)
 If you modify files inside `frontend/src/`:

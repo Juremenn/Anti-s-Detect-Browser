@@ -19,10 +19,10 @@ VSVersionInfo(
           '040904B0',
           [
             StringStruct('CompanyName', 'Nirvana Handika Putra'),
-            StringStruct('FileDescription', "Anti's Detect Browser - Multi-Profile Anti-Detect Browser"),
+            StringStruct('FileDescription', "Anti's Detect Browser"),
             StringStruct('FileVersion', '1.0.0.0'),
             StringStruct('InternalName', 'AntiDetectBrowser'),
-            StringStruct('LegalCopyright', 'Copyright (c) 2026 Nirvana Handika Putra. Licensed under MIT License.'),
+            StringStruct('LegalCopyright', 'Copyright (c) 2026 Nirvana Handika Putra'),
             StringStruct('OriginalFilename', 'AntiDetectBrowser.exe'),
             StringStruct('ProductName', "Anti's Detect Browser"),
             StringStruct('ProductVersion', '1.0.0.0')

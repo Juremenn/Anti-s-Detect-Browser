@@ -84,16 +84,16 @@ pip install pywebview playwright
 
 ## 4. Cara Penggunaan Cepat (Desktop UI)
 
-### Cara 1: Download Aplikasi Portable `.exe` (Direkomendasikan - Tanpa Install Python)
-1. Buka halaman [**GitHub Releases**](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest) lalu unduh file **`AntiDetectBrowser.exe`**.
-2. Dobel-klik **`AntiDetectBrowser.exe`** untuk langsung menjalankan aplikasi desktop Windows.
-3. Klik **Continue with Google** pada layar login untuk masuk menggunakan akun Google Anda.
+### Cara 1: Installer Resmi Windows (`AntiDetectBrowser-Setup-v1.0.0.exe` - Direkomendasikan)
+1. Buka halaman [**GitHub Releases**](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest) lalu unduh **`AntiDetectBrowser-Setup-v1.0.0.exe`** (serta ekstensi mandiri opsional **`anti-detect-browser.crx`**).
+2. Jalankan **`AntiDetectBrowser-Setup-v1.0.0.exe`** untuk memasang **Anti's Detect Browser** lengkap dengan pintasan Start Menu dan Desktop. Seluruh data profil, ekstensi, dan sesi login Google disimpan dengan aman di `%LOCALAPPDATA%\AntiDetectBrowser\`.
+3. Buka aplikasi dan klik **Continue with Google** pada layar login untuk masuk menggunakan akun Google Anda.
 
 ### Cara 2: Dobel-Klik File Peluncur (Dari Source Code)
 1. Dobel-klik file **`Buka_Anti_Detect_Browser.bat`** atau **`AntiDetectBrowser.pyw`**.
 2. Klik **Continue with Google** pada layar login untuk masuk menggunakan akun Google Anda.
 
-### Cara 3: Menjalankan atau Build `.exe` lewat Terminal
+### Cara 3: Menjalankan atau Build Installer Resmi lewat Terminal
 ```bash
 # Menjalankan aplikasi desktop dari source Python
 python desktop_app.pyw
@@ -101,9 +101,14 @@ python desktop_app.pyw
 # Atau menjalankan server UI lokal secara langsung (http://127.0.0.1:58888)
 python web_ui_server.py
 
-# Membangun file mandiri AntiDetectBrowser.exe (output: dist/AntiDetectBrowser.exe)
-python scripts/build-desktop-exe.py --onefile --install-deps
+# Membangun paket rilis lengkap (Frontend + CRX + PyInstaller --onedir + Inno Setup Installer + SHA256SUMS.txt)
+python scripts/build-release.py
 ```
+
+### CI/CD & Azure Trusted Signing (Reputasi SmartScreen)
+Pipeline GitHub Actions (`.github/workflows/release.yml`) secara otomatis membangun `AntiDetectBrowser-Setup-<version>.exe`, `anti-detect-browser.crx`, dan `SHA256SUMS.txt` setiap kali tag `v*` di-push. Untuk mengaktifkan penandatanganan digital Authenticode otomatis agar langsung dipercaya Windows SmartScreen, tambahkan GitHub Repository Secrets berikut:
+- **Azure Trusted Signing**: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_CODE_SIGNING_ENDPOINT`, `AZURE_CODE_SIGNING_ACCOUNT`, `AZURE_CERT_PROFILE_NAME`.
+- **Atau Sertifikat PFX Standar**: `WINDOWS_PFX_BASE64`, `WINDOWS_PFX_PASSWORD`.
 
 ### Membangun Ulang Frontend UI (Opsional)
 Jika Anda mengubah kode di dalam `frontend/src/`:
