@@ -166,33 +166,46 @@ async function updateHeaderRules() {
   }
 
   // Client Hints
-  if (preset.sec_ch_ua) {
-    rulesToAdd.push({
-      id: RULE_IDS.SEC_CH_UA,
-      priority: 1,
-      action: {
-        type: 'modifyHeaders',
-        requestHeaders: [
-          { header: 'Sec-CH-UA', operation: 'set', value: preset.sec_ch_ua }
-        ]
-      },
-      condition: { urlFilter: '*', resourceTypes: ['main_frame', 'sub_frame', 'xmlhttprequest', 'other'] }
-    });
-  }
+  const secChUa = preset.sec_ch_ua || '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"';
+  rulesToAdd.push({
+    id: RULE_IDS.SEC_CH_UA,
+    priority: 1,
+    action: {
+      type: 'modifyHeaders',
+      requestHeaders: [
+        { header: 'Sec-CH-UA', operation: 'set', value: secChUa }
+      ]
+    },
+    condition: { urlFilter: '*', resourceTypes: ['main_frame', 'sub_frame', 'xmlhttprequest', 'other'] }
+  });
 
-  if (preset.sec_ch_ua_platform) {
-    rulesToAdd.push({
-      id: RULE_IDS.SEC_CH_UA_PLATFORM,
-      priority: 1,
-      action: {
-        type: 'modifyHeaders',
-        requestHeaders: [
-          { header: 'Sec-CH-UA-Platform', operation: 'set', value: preset.sec_ch_ua_platform }
-        ]
-      },
-      condition: { urlFilter: '*', resourceTypes: ['main_frame', 'sub_frame', 'xmlhttprequest', 'other'] }
-    });
-  }
+  const osPlatformStr = preset.os === 'win' ? '"Windows"' : preset.os === 'mac' ? '"macOS"' : preset.os === 'ios' ? '"iOS"' : preset.os === 'android' ? '"Android"' : '"Windows"';
+  const secChUaPlatform = preset.sec_ch_ua_platform || osPlatformStr;
+  rulesToAdd.push({
+    id: RULE_IDS.SEC_CH_UA_PLATFORM,
+    priority: 1,
+    action: {
+      type: 'modifyHeaders',
+      requestHeaders: [
+        { header: 'Sec-CH-UA-Platform', operation: 'set', value: secChUaPlatform }
+      ]
+    },
+    condition: { urlFilter: '*', resourceTypes: ['main_frame', 'sub_frame', 'xmlhttprequest', 'other'] }
+  });
+
+  const isMobile = preset.category === 'mobile' || (preset.max_touch_points && preset.max_touch_points > 0);
+  const secChUaMobile = preset.sec_ch_ua_mobile || (isMobile ? '?1' : '?0');
+  rulesToAdd.push({
+    id: RULE_IDS.SEC_CH_UA_MOBILE,
+    priority: 1,
+    action: {
+      type: 'modifyHeaders',
+      requestHeaders: [
+        { header: 'Sec-CH-UA-Mobile', operation: 'set', value: secChUaMobile }
+      ]
+    },
+    condition: { urlFilter: '*', resourceTypes: ['main_frame', 'sub_frame', 'xmlhttprequest', 'other'] }
+  });
 
   // Accept-Language
   const lang = (activeConfig.ip_info && activeConfig.ip_info.language) || (preset.languages && preset.languages[0]) || 'en-US';
