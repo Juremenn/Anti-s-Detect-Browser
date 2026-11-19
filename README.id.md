@@ -229,22 +229,14 @@ asyncio.run(main())
 
 ## 9. Kontributor
 
-<table>
-  <tr>
-    <td align="center" width="160">
-      <a href="https://github.com/Juremenn">
-        <img src="https://github.com/Juremenn.png?size=128" width="72" height="72" alt="Juremenn" /><br />
-        <sub><b>Juremenn</b></sub>
-      </a>
-    </td>
-    <td align="center" width="160">
-      <a href="https://antigravity.google">
-        <img src=".github/assets/antigravity-logo.png" width="72" height="72" alt="Antigravity" /><br />
-        <sub><b>Antigravity</b></sub>
-      </a>
-    </td>
-  </tr>
-</table>
+<p>
+  <a href="https://github.com/Juremenn" title="Juremenn">
+    <img src="https://github.com/Juremenn.png?size=96" width="48" height="48" alt="Juremenn" />
+  </a>
+  <a href="https://antigravity.google" title="Antigravity">
+    <img src=".github/assets/antigravity-logo.png" width="48" height="48" alt="Antigravity" />
+  </a>
+</p>
 
 ---
 
