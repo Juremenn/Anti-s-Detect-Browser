@@ -10,6 +10,7 @@
     <a href="README.id.md"><img src="https://img.shields.io/badge/Bahasa-Indonesia%20(Aktif)-4F46E5?style=for-the-badge" alt="Bahasa Indonesia" /></a>
   </p>
 
+  [![Release](https://img.shields.io/github/v/release/Juremenn/Anti-s-Detect-Browser?color=5B4FE9&label=Release)](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest)
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6.svg)](#3-kebutuhan-sistem)
   [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](#3-kebutuhan-sistem)
@@ -31,8 +32,9 @@
 6. [Ekstensi Chromium Mandiri](#6-ekstensi-chromium-mandiri)
 7. [Struktur Proyek](#7-struktur-proyek)
 8. [Integrasi Otomasi Playwright](#8-integrasi-otomasi-playwright)
-9. [Dukungan & Donasi](#9-dukungan--donasi)
-10. [Lisensi](#10-lisensi)
+9. [Kontributor](#9-kontributor)
+10. [Dukungan & Donasi](#10-dukungan--donasi)
+11. [Lisensi](#11-lisensi)
 
 ---
 
@@ -82,17 +84,25 @@ pip install pywebview playwright
 
 ## 4. Cara Penggunaan Cepat (Desktop UI)
 
-### Cara 1: Dobel-Klik File Peluncur (Direkomendasikan)
+### Cara 1: Download Aplikasi Portable `.exe` (Direkomendasikan - Tanpa Install Python)
+1. Buka halaman [**GitHub Releases**](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest) lalu unduh file **`AntiDetectBrowser.exe`**.
+2. Dobel-klik **`AntiDetectBrowser.exe`** untuk langsung menjalankan aplikasi desktop Windows.
+3. Klik **Continue with Google** pada layar login untuk masuk menggunakan akun Google Anda.
+
+### Cara 2: Dobel-Klik File Peluncur (Dari Source Code)
 1. Dobel-klik file **`Buka_Anti_Detect_Browser.bat`** atau **`AntiDetectBrowser.pyw`**.
 2. Klik **Continue with Google** pada layar login untuk masuk menggunakan akun Google Anda.
 
-### Cara 2: Menjalankan lewat Terminal
+### Cara 3: Menjalankan atau Build `.exe` lewat Terminal
 ```bash
+# Menjalankan aplikasi desktop dari source Python
 python desktop_app.pyw
-```
-Atau jalankan server UI lokal secara langsung (terbuka di `http://127.0.0.1:58888`):
-```bash
+
+# Atau menjalankan server UI lokal secara langsung (http://127.0.0.1:58888)
 python web_ui_server.py
+
+# Membangun file mandiri AntiDetectBrowser.exe (output: dist/AntiDetectBrowser.exe)
+python scripts/build-desktop-exe.py --onefile --install-deps
 ```
 
 ### Membangun Ulang Frontend UI (Opsional)
@@ -212,7 +222,14 @@ asyncio.run(main())
 
 ---
 
-## 9. Dukungan & Donasi
+## 9. Kontributor
+
+- **Nirvana Handika Putra ([@Juremenn](https://github.com/Juremenn))** - Kreator, Peneliti Keamanan Utama & Arsitek Sistem
+- **Antigravity (Google Gemini / Google DeepMind)** - AI Co-Engineer (Mesin Fingerprint, Desktop Shell, React UI & Arsitektur Google OAuth 2.0 PKCE)
+
+---
+
+## 10. Dukungan & Donasi
 
 Jika proyek ini bermanfaat bagi pekerjaan Anda, Anda dapat memberikan dukungan melalui Saweria:
 
@@ -220,6 +237,6 @@ Jika proyek ini bermanfaat bagi pekerjaan Anda, Anda dapat memberikan dukungan m
 
 ---
 
-## 10. Lisensi
+## 11. Lisensi
 
 Didistribusikan di bawah [Lisensi MIT](LICENSE). Hak Cipta (c) 2026 Nirvana Handika Putra.

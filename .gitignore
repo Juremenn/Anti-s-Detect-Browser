@@ -15,5 +15,9 @@ data/custom_extensions.json
 data/webview_cache/
 data/auth_session.json
 .env
+build/
+dist/
+*.spec
+
 
 

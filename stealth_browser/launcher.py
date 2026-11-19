@@ -103,7 +103,8 @@ class StealthLauncher:
         """
         Collect directories of enabled custom extensions that actually exist on disk.
         """
-        custom_ext_file = Path(__file__).resolve().parent.parent / "data" / "custom_extensions.json"
+        app_root = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+        custom_ext_file = app_root / "data" / "custom_extensions.json"
         valid_paths = []
         if custom_ext_file.is_file():
             try:

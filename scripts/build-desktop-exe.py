@@ -63,6 +63,7 @@ def build_exe(onefile: bool = False):
     dist_dir = REPO_ROOT / "dist"
     build_dir = REPO_ROOT / "build"
     app_ico = REPO_ROOT / "app.ico"
+    selfcheck_html = REPO_ROOT / "selfcheck.html"
     entry_script = REPO_ROOT / "desktop_app.pyw"
 
     cmd = [
@@ -75,17 +76,23 @@ def build_exe(onefile: bool = False):
         "--windowed",  # Suppresses the console window on launch
         f"--icon={app_ico}",
         f"--add-data={REPO_ROOT / 'web_ui'};web_ui",
-        f"--add-data={REPO_ROOT / 'data'};data",
         f"--add-data={REPO_ROOT / 'stealth_browser'};stealth_browser",
         f"--add-data={app_ico};.",
+        f"--add-data={selfcheck_html};.",
+        "--hidden-import=web_ui_server",
         "--hidden-import=webview",
         "--hidden-import=webview.platforms.winforms",
+        "--hidden-import=webview.platforms.edgechromium",
         "--hidden-import=clr",
         "--hidden-import=pythonnet",
         "--hidden-import=stealth_browser",
         "--hidden-import=stealth_browser.profile_manager",
         "--hidden-import=stealth_browser.launcher",
-        "--hidden-import=stealth_browser.fingerprint_generator",
+        "--hidden-import=stealth_browser.fingerprint",
+        "--hidden-import=stealth_browser.stealth_hooks",
+        "--hidden-import=stealth_browser.cdp_apply",
+        "--hidden-import=stealth_browser.consistency",
+        "--hidden-import=stealth_browser.proxy_utils",
     ]
 
     if onefile:

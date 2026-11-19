@@ -10,10 +10,11 @@
     <a href="README.id.md"><img src="https://img.shields.io/badge/Bahasa-Indonesia-1E293B?style=for-the-badge" alt="Bahasa Indonesia" /></a>
   </p>
 
+  [![Release](https://img.shields.io/github/v/release/Juremenn/Anti-s-Detect-Browser?color=5B4FE9&label=Release)](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest)
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-  [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6.svg)](#requirements)
-  [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](#requirements)
-  [![Auth](https://img.shields.io/badge/Auth-Google%20OAuth%202.0-4285F4.svg)](#quick-start-desktop-ui)
+  [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6.svg)](#3-requirements)
+  [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](#3-requirements)
+  [![Auth](https://img.shields.io/badge/Auth-Google%20OAuth%202.0-4285F4.svg)](#4-quick-start-desktop-ui)
   [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Saweria-F9A825.svg)](https://saweria.co/juremenn)
 
   ☕ **Support this project:** [Buy me a coffee on Saweria (https://saweria.co/juremenn)](https://saweria.co/juremenn)
@@ -31,8 +32,9 @@
 6. [Standalone Chromium Extension](#6-standalone-chromium-extension)
 7. [Project Structure](#7-project-structure)
 8. [Playwright Automation Integration](#8-playwright-automation-integration)
-9. [Support & Donation](#9-support--donation)
-10. [License](#10-license)
+9. [Contributors](#9-contributors)
+10. [Support & Donation](#10-support--donation)
+11. [License](#11-license)
 
 ---
 
@@ -82,17 +84,25 @@ pip install pywebview playwright
 
 ## 4. Quick Start (Desktop UI)
 
-### Option 1: Double-Click Launcher (Recommended)
+### Option 1: Download Pre-Built Portable `.exe` (Recommended - No Python Required)
+1. Go to the [**GitHub Releases**](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest) page and download **`AntiDetectBrowser.exe`**.
+2. Double-click **`AntiDetectBrowser.exe`** to launch the native Windows desktop application directly.
+3. Click **Continue with Google** on the login gate to sign in with your Google account.
+
+### Option 2: Double-Click Launcher (From Source)
 1. Double-click **`Buka_Anti_Detect_Browser.bat`** or **`AntiDetectBrowser.pyw`**.
 2. Click **Continue with Google** on the login gate to sign in through your browser.
 
-### Option 2: Run from Terminal
+### Option 3: Run or Build `.exe` from Terminal
 ```bash
+# Run desktop app from Python source
 python desktop_app.pyw
-```
-Or start the local web server directly (opens on `http://127.0.0.1:58888`):
-```bash
+
+# Or start the local web server directly (http://127.0.0.1:58888)
 python web_ui_server.py
+
+# Build standalone single-file AntiDetectBrowser.exe (output: dist/AntiDetectBrowser.exe)
+python scripts/build-desktop-exe.py --onefile --install-deps
 ```
 
 ### Rebuilding the Frontend UI (Optional)
@@ -212,7 +222,14 @@ asyncio.run(main())
 
 ---
 
-## 9. Support & Donation
+## 9. Contributors
+
+- **Nirvana Handika Putra ([@Juremenn](https://github.com/Juremenn))** - Creator, Lead Security Researcher & System Architect
+- **Antigravity (Google Gemini / Google DeepMind)** - AI Co-Engineer (Fingerprint Engine, Desktop Shell, React UI & Google OAuth 2.0 PKCE Architecture)
+
+---
+
+## 10. Support & Donation
 
 If this project saves you time or helps your workflow, you can support its development by buying me a coffee:
 
@@ -220,6 +237,6 @@ If this project saves you time or helps your workflow, you can support its devel
 
 ---
 
-## 10. License
+## 11. License
 
 Licensed under the [MIT License](LICENSE). Copyright (c) 2026 Nirvana Handika Putra.

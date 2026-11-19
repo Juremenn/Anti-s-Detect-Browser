@@ -16,6 +16,7 @@ import json
 import socket
 import ssl
 import struct
+import sys
 import time
 from pathlib import Path
 
@@ -33,7 +34,8 @@ _ECHO_REQUEST = (
     f"User-Agent: Mozilla/5.0\r\nConnection: close\r\n\r\n"
 ).encode("ascii")
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_APP_ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+DATA_DIR = _APP_ROOT / "data"
 
 
 class ProxyError(ValueError):

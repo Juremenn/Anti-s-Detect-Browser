@@ -36,8 +36,9 @@ from stealth_browser.profile_manager import HARDWARE_PRESETS, ProfileError, Prof
 from stealth_browser import proxy_utils
 
 PORT = 58888
-ROOT = Path(__file__).resolve().parent
-WEB_DIR = ROOT / "web_ui"
+BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+WEB_DIR = BUNDLE_ROOT / "web_ui"
 SETTINGS_FILE = ROOT / "app_settings.json"
 ENV_FILE = ROOT / ".env"
 PROXIES_FILE = ROOT / "proxies.json"
@@ -618,7 +619,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def _serve_selfcheck(self):
-        file = ROOT / "selfcheck.html"
+        file = BUNDLE_ROOT / "selfcheck.html"
+        if not file.is_file():
+            file = ROOT / "selfcheck.html"
         if not file.is_file():
             return self._error("selfcheck.html tidak ditemukan.", 404)
         body = file.read_bytes()

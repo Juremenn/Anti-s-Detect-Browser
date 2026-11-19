@@ -16,9 +16,11 @@ import time
 import webview
 
 # Add base directory to sys.path
-BASE_DIR = Path(__file__).resolve().parent
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
+BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+BASE_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+for _p in (str(BUNDLE_DIR), str(BASE_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import web_ui_server
 
@@ -237,7 +239,9 @@ def main():
     server = ensure_server()
 
     bridge = DesktopBridge()
-    icon_path = BASE_DIR / "app.ico"
+    icon_path = BUNDLE_DIR / "app.ico"
+    if not icon_path.is_file():
+        icon_path = BASE_DIR / "app.ico"
     storage_path = DATA_DIR / "webview_cache"
     storage_path.mkdir(parents=True, exist_ok=True)
     cleanup_orphaned_webview(storage_path)

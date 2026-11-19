@@ -6,6 +6,7 @@ import json
 import random
 import re
 import shutil
+import sys
 import tempfile
 import time
 import uuid
@@ -15,7 +16,8 @@ from urllib.parse import urlparse
 
 from .fingerprint import derive_identity
 
-BASE_PROFILES_DIR = Path(__file__).resolve().parent.parent / "profiles"
+_APP_ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+BASE_PROFILES_DIR = _APP_ROOT / "profiles"
 TRASH_DIRNAME = ".trash"
 
 # Letters, digits, space, dash, underscore. No dots or slashes, so a name can never
