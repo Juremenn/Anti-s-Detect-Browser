@@ -46,7 +46,7 @@ export function TrashView({
               backgroundColor: 'var(--bg-raised)',
               padding: '1px 6px',
               borderRadius: 4,
-              fontFamily: 'var(--font-mono)',
+              fontFamily: 'var(--font-sans)',
               fontVariantNumeric: 'tabular-nums',
             }}
           >

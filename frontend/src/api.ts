@@ -1,5 +1,8 @@
 import {
   AppSettings,
+  AuthConfigResponse,
+  AuthStartResponse,
+  AuthStatusResponse,
   ConsistencyResult,
   CreateProfilePayload,
   CustomFingerprint,
@@ -25,6 +28,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers,
   });
 
+  if (res.status === 401 && !path.startsWith('/api/auth/')) {
+    window.dispatchEvent(new Event('anti_detect_auth_unauthorized'));
+  }
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.error) {
     throw new Error(data.error || `HTTP ${res.status}: ${res.statusText}`);
@@ -34,6 +41,32 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  // Authentication (Google OAuth 2.0 Loopback + PKCE)
+  getAuthStatus: () => request<AuthStatusResponse>('/api/auth/status'),
+  saveAuthConfig: (googleClientId: string, googleClientSecret?: string) =>
+    request<AuthConfigResponse>('/api/auth/config', {
+      method: 'POST',
+      body: JSON.stringify({
+        google_client_id: googleClientId,
+        ...(googleClientSecret !== undefined ? { google_client_secret: googleClientSecret } : {}),
+      }),
+    }),
+  startGoogleAuth: (openBrowser = true) =>
+    request<AuthStartResponse>('/api/auth/google/start', {
+      method: 'POST',
+      body: JSON.stringify({ open_browser: openBrowser }),
+    }),
+  cancelGoogleAuth: () =>
+    request<{ status: string }>('/api/auth/google/cancel', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  logout: () =>
+    request<{ status: string; authenticated: boolean }>('/api/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
   // Profiles
   getProfiles: () => request<ProfilesResponse>('/api/profiles'),
   startProfile: (name: string, url?: string) =>

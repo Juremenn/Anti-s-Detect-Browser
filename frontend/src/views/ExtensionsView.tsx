@@ -23,9 +23,10 @@ import { t } from '../i18n';
 
 interface ExtensionsViewProps {
   onToast?: (message: string, type?: 'info' | 'success' | 'error') => void;
+  onCountChange?: (count: number) => void;
 }
 
-export function ExtensionsView({ onToast }: ExtensionsViewProps) {
+export function ExtensionsView({ onToast, onCountChange }: ExtensionsViewProps) {
   const { confirm } = useConfirm();
   const [extensions, setExtensions] = useState<Extension[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +52,12 @@ export function ExtensionsView({ onToast }: ExtensionsViewProps) {
   useEffect(() => {
     loadExtensions();
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      onCountChange?.(extensions.length);
+    }
+  }, [extensions.length, loading, onCountChange]);
 
   async function loadExtensions() {
     try {
@@ -375,7 +382,8 @@ export function ExtensionsView({ onToast }: ExtensionsViewProps) {
               padding: '0 6px',
               borderRadius: 10,
               fontSize: 11,
-              fontFamily: 'var(--font-mono, monospace)',
+              fontFamily: 'var(--font-sans)',
+              fontVariantNumeric: 'tabular-nums',
               fontWeight: 500,
               backgroundColor: 'var(--bg-raised, #F1F5F9)',
               color: 'var(--text-secondary, #64748B)',

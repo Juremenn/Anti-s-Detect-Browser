@@ -1,15 +1,21 @@
 <div id="top"></div>
 
-# Anti's Detect Browser
+<div align="center">
+  <img src="frontend/public/assets/logo.png" alt="Anti's Detect Browser Logo" width="112" height="112" />
 
-**Language / Bahasa:** [**English** (Default)](#english) | [**Bahasa Indonesia**](#bahasa-indonesia)
+  # Anti's Detect Browser
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6.svg)](#requirements)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](#requirements)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Saweria-F9A825.svg)](https://saweria.co/juremenn)
+  **100% Offline Multi-Profile Anti-Detect Browser & Fingerprint Isolation Engine**
 
-> ☕ **Support this project / Dukung proyek ini:** [Buy me a coffee on Saweria (https://saweria.co/juremenn)](https://saweria.co/juremenn)
+  **Language / Bahasa:** [**English** (Default)](#english) | [**Bahasa Indonesia**](#bahasa-indonesia)
+
+  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+  [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6.svg)](#requirements)
+  [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](#requirements)
+  [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Saweria-F9A825.svg)](https://saweria.co/juremenn)
+
+  ☕ **Support this project / Dukung proyek ini:** [Buy me a coffee on Saweria (https://saweria.co/juremenn)](https://saweria.co/juremenn)
+</div>
 
 ---
 
@@ -17,7 +23,7 @@
 
 ## English (Default)
 
-**Anti's Detect Browser** is a 100% offline, local anti-detect browser management platform and fingerprint spoofing engine built from reverse-engineering the architecture of **Octo Browser v3.2.4**. It runs directly on your machine without cloud accounts, login walls, or monthly subscriptions.
+**Anti's Detect Browser** is a standalone, 100% offline anti-detect browser management application and multi-vector fingerprint spoofing engine for Windows. It runs directly on your machine without cloud accounts, login requirements, or monthly subscription fees.
 
 ### Table of Contents
 1. [Overview](#overview)
@@ -28,7 +34,7 @@
 6. [Command-Line Usage (CLI)](#command-line-usage-cli)
 7. [Standalone Chromium Extension](#standalone-chromium-extension)
 8. [Playwright Automation Integration](#playwright-automation-integration)
-9. [Reverse Engineering Documentation](#reverse-engineering-documentation)
+9. [Contributors](#contributors)
 10. [Support & Donation](#support--donation)
 11. [License](#license)
 
@@ -36,22 +42,23 @@
 
 ### Overview
 
-The official Octo Browser client acts as a thin wrapper that blocks local profile creation unless authenticated against a paid cloud account. **Anti's Detect Browser** replicates the core multi-vector fingerprint isolation mechanics locally on standard Chromium engines (Chromium, Brave, Google Chrome, and Microsoft Edge) by combining Chrome DevTools Protocol (CDP) emulation overrides with an injected Manifest V3 stealth extension.
+**Anti's Detect Browser** provides isolated browser environments and deterministic hardware fingerprint control across standard Chromium-based browsers (Chromium, Brave, Google Chrome, and Microsoft Edge). By combining Chrome DevTools Protocol (CDP) runtime emulation with a Manifest V3 main-world stealth engine, each profile operates as a separate physical device with its own persistent storage, proxy routing, and hardware signature.
 
 ### Core Features
 
-- **100% Offline & Local Storage**: Zero external account dependencies. Every profile stores its configuration and isolated Chromium `UserData` folder locally inside `profiles/`.
-- **Deterministic Identity Derivation**: Powered by a 64-bit `identity_seed` and Mulberry32 PRNG (`stealth_browser/fingerprint.py`). A profile always produces the exact same hardware fingerprint across sessions while remaining distinct from every other profile.
+- **100% Offline & Local Privacy**: Zero external account or cloud sync dependencies. Every profile stores its configuration and isolated Chromium `UserData` directory locally inside `profiles/`.
+- **Deterministic Identity Derivation**: Powered by a 64-bit `identity_seed` and Mulberry32 PRNG (`stealth_browser/fingerprint.py`). Each profile consistently generates the exact same hardware fingerprint across sessions while remaining distinct from every other profile.
 - **5-Vector Fingerprint Spoofing**:
-  - **Canvas**: Seeded sub-pixel deterministic perturbation on `toDataURL`, `toBlob`, and `getImageData`.
-  - **WebGL & GPU**: Overrides `UNMASKED_VENDOR_WEBGL` (`0x9245`) and `UNMASKED_RENDERER_WEBGL` (`0x9246`) with matched GPU strings across NVIDIA GeForce RTX, AMD Radeon, Intel Iris/Arc, and Apple Silicon M1/M2/M3 families.
+  - **Canvas**: Seeded sub-pixel deterministic perturbation on `toDataURL`, `toBlob`, and `getImageData` without visual distortion.
+  - **WebGL & GPU**: Overrides `UNMASKED_VENDOR_WEBGL` (`0x9245`) and `UNMASKED_RENDERER_WEBGL` (`0x9246`) with matched GPU signatures across NVIDIA GeForce RTX, AMD Radeon, Intel Iris/Arc, and Apple Silicon M1/M2/M3 families.
   - **AudioContext**: Deterministic micro-perturbation on `AnalyserNode` FFT frequency bins and `AudioBuffer` channel data.
-  - **Navigator, Client Hints & Screen**: Synchronizes `navigator.hardwareConcurrency`, `navigator.deviceMemory` (capped at 8 GB per Chromium specification), `navigator.platform`, high-entropy `Sec-CH-UA` headers, and taskbar-aware screen dimensions.
-  - **WebRTC, Geolocation, Timezone & DOM Geometry**: Supports automatic proxy-based resolution (`proxy` mode) or manual overrides for timezone, locale, and coordinates, alongside `getBoundingClientRect` perturbation and local port-scan protection.
+  - **Navigator, Client Hints & Screen**: Synchronizes `navigator.hardwareConcurrency`, `navigator.deviceMemory` (clamped at 8 GB per Chromium specification), `navigator.platform`, high-entropy `Sec-CH-UA` headers, and taskbar-adjusted screen dimensions.
+  - **WebRTC, Geolocation, Timezone & DOM Geometry**: Supports automatic proxy-based resolution (`Based on proxy`) or manual overrides for timezone, locale, and coordinates, alongside `getBoundingClientRect` perturbation and local port-scan protection.
 - **100 Built-In Hardware Presets**: Ships with 100 validated device presets (`stealth_browser/data/presets.json`): 35 Windows laptops/desktops, 25 macOS devices, 20 iOS devices, and 20 Android devices.
-- **Native Windows Desktop Shell & React Dashboard**:
+- **Native Windows Desktop Shell, Google OAuth 2.0 Gate & React Dashboard**:
   - Runs as a native desktop window via `pywebview` (Edge WebView2) backed by a local HTTP server bound strictly to `127.0.0.1:58888`.
-  - Manage profiles with folders, tags, color markers, notes, search, trash bin recovery, fingerprint consistency checks, proxy testing (`HTTP`, `HTTPS`, `SOCKS4`, `SOCKS5`), custom `.crx` / unpacked extension loading, and light/dark themes.
+  - Secured with a clean **Google-only OAuth 2.0 Loopback + PKCE (RFC 8252)** desktop login gate and persistent local session refresh (`data/auth_session.json`).
+  - Organize profiles with folders, tags, color labels, notes, search filters, trash bin recovery, fingerprint consistency checks, proxy testing (`HTTP`, `HTTPS`, `SOCKS4`, `SOCKS5`), custom `.crx` / unpacked extension loading, and light/dark themes.
 - **Multi-Browser Engine Discovery**: Automatically detects installed Chromium binaries on Windows (Playwright Chromium, Brave Browser, Google Chrome, and Microsoft Edge).
 
 ---
@@ -59,13 +66,14 @@ The official Octo Browser client acts as a thin wrapper that blocks local profil
 ### Project Structure
 
 ```text
-Octo-Browser/
-├── Buka_Octo_Browser_UI.bat                 # 1-click launcher for the native desktop UI
+Anti-s-Detect-Browser/
+├── Buka_Anti_Detect_Browser.bat             # 1-click launcher for the native desktop UI
 ├── AntiDetectBrowser.pyw                    # Silent desktop app entrypoint (no console window)
 ├── desktop_app.pyw                          # pywebview (Edge WebView2) native shell & lifecycle manager
 ├── web_ui_server.py                         # Local backend HTTP API server (127.0.0.1:58888)
 ├── run_stealth.py                           # CLI runner for profile management & automation
 ├── selfcheck.html                           # Built-in local fingerprint verification page
+├── app.ico                                  # Multi-resolution Windows application icon
 ├── stealth_browser/                         # Core anti-detect Python package
 │   ├── profile_manager.py                   # Profile CRUD, validation, folders, tags, trash bin
 │   ├── fingerprint.py                       # Mulberry32 deterministic PRNG & UA-CH metadata builder
@@ -79,10 +87,8 @@ Octo-Browser/
 ├── Extension/anti-detect-browser.crx        # Packaged CRX extension build
 ├── frontend/                                # React 19 + TypeScript + Vite source for the dashboard UI
 ├── web_ui/                                  # Compiled static frontend assets served by web_ui_server.py
-├── scripts/                                 # Build scripts & Octo Browser reverse-engineering utilities
-├── tests/                                   # Unit and integration tests (API, CRX install, profiles)
-├── OCTO_BROWSER_REVERSE_ENGINEERING_REPORT.md # Full technical reverse-engineering analysis report
-└── README_STEALTH.md                        # Additional stealth engine notes
+├── scripts/                                 # Build scripts for icons, presets, extension & desktop exe
+└── tests/                                   # Unit and integration tests (API, CRX install, profiles)
 ```
 
 ---
@@ -106,7 +112,7 @@ pip install pywebview playwright
 ### Quick Start (Desktop UI)
 
 #### Option 1: Double-Click Launcher (Recommended)
-Double-click **`Buka_Octo_Browser_UI.bat`** or **`AntiDetectBrowser.pyw`**.
+Double-click **`Buka_Anti_Detect_Browser.bat`** or **`AntiDetectBrowser.pyw`**.
 This launches the native desktop interface without a background terminal window.
 
 #### Option 2: Run from Terminal
@@ -218,12 +224,10 @@ asyncio.run(main())
 
 ---
 
-### Reverse Engineering Documentation
+### Contributors
 
-For a full technical breakdown of Octo Browser v3.2.4 (Caphyon Advanced Installer XOR de-obfuscation, PyInstaller extraction, FastAPI local RPC endpoints, Octium browser flags, and fingerprint vectors), read:
-- [OCTO_BROWSER_REVERSE_ENGINEERING_REPORT.md](OCTO_BROWSER_REVERSE_ENGINEERING_REPORT.md)
-- [reports/01_electron_orchestration.md](reports/01_electron_orchestration.md)
-- [reports/02_chromium_fingerprint_hooks.md](reports/02_chromium_fingerprint_hooks.md)
+- **Nirvana Handika Putra ([@Juremenn](https://github.com/Juremenn))** - Creator, Lead Security Researcher & Architect
+- **Antigravity (Google Gemini / Google DeepMind)** - AI Co-Engineer (Fingerprint Engine, Desktop Shell, React UI & Google OAuth 2.0 PKCE Architecture)
 
 ---
 
@@ -248,7 +252,7 @@ Licensed under the [MIT License](LICENSE). Copyright (c) 2026 Nirvana Handika Pu
 
 [**⬆️ Back to Top / Kembali ke Atas**](#top) | [**Switch to English**](#english)
 
-**Anti's Detect Browser** adalah platform manajemen browser anti-detect lokal dan mesin penyamaran fingerprint (**100% Offline, Tanpa Login, Tanpa Akun Cloud**) yang dibangun dari hasil rekayasa balik (*reverse engineering*) arsitektur **Octo Browser v3.2.4**. Seluruh fitur berjalan langsung di komputer Anda tanpa biaya langganan bulanan.
+**Anti's Detect Browser** adalah aplikasi manajemen browser anti-detect lokal dan mesin isolasi fingerprint multi-profil (**100% Offline, Tanpa Login, Tanpa Akun Cloud**) untuk Windows. Seluruh fitur berjalan langsung di komputer Anda tanpa ketergantungan server luar maupun biaya langganan bulanan.
 
 ### Daftar Isi
 1. [Ringkasan](#ringkasan)
@@ -259,7 +263,7 @@ Licensed under the [MIT License](LICENSE). Copyright (c) 2026 Nirvana Handika Pu
 6. [Penggunaan via Terminal (CLI)](#penggunaan-via-terminal-cli)
 7. [Ekstensi Chromium Mandiri](#ekstensi-chromium-mandiri)
 8. [Integrasi Otomasi Playwright](#integrasi-otomasi-playwright)
-9. [Dokumentasi Reverse Engineering](#dokumentasi-reverse-engineering)
+9. [Kontributor](#kontributor)
 10. [Dukungan & Donasi](#dukungan--donasi)
 11. [Lisensi](#lisensi)
 
@@ -267,21 +271,22 @@ Licensed under the [MIT License](LICENSE). Copyright (c) 2026 Nirvana Handika Pu
 
 ### Ringkasan
 
-Aplikasi `Octo Browser.exe` resmi merupakan *thin client* yang memblokir pembuatan profil lokal apabila pengguna tidak masuk menggunakan akun berbayar. **Anti's Detect Browser** mereplikasi mekanisme isolasi dan manipulasi fingerprint multi-vektor tersebut secara lokal di atas mesin Chromium standar (Chromium, Brave, Google Chrome, dan Microsoft Edge) melalui kombinasi *Chrome DevTools Protocol* (CDP) dan injeksi ekstensi Manifest V3.
+**Anti's Detect Browser** menyediakan lingkungan profil browser yang terisolasi penuh beserta kontrol sidik jari perangkat (*hardware fingerprint*) secara deterministik di atas mesin browser berbasis Chromium (Chromium, Brave, Google Chrome, dan Microsoft Edge). Dengan memadukan emulasi *Chrome DevTools Protocol* (CDP) dan injeksi ekstensi Manifest V3, setiap profil beroperasi layaknya perangkat fisik terpisah dengan ruang penyimpanan lokal, jalur proxy, dan identitas hardware masing-masing.
 
 ### Fitur Utama
 
-- **100% Offline & Penyimpanan Lokal**: Tidak membutuhkan akun atau koneksi ke server cloud pihak ketiga. Seluruh konfigurasi dan direktori `UserData` Chrome masing-masing profil disimpan secara terisolasi di folder `profiles/`.
+- **100% Offline & Privasi Lokal**: Tidak membutuhkan akun atau sinkronisasi ke cloud pihak ketiga. Seluruh konfigurasi dan direktori `UserData` Chrome masing-masing profil disimpan secara terisolasi di folder `profiles/`.
 - **Identitas Deterministik Berbasis Seed**: Menggunakan `identity_seed` 64-bit dengan algoritma PRNG Mulberry32 (`stealth_browser/fingerprint.py`). Setiap profil selalu menghasilkan sidik jari perangkat yang konsisten saat dibuka kembali, namun tetap unik antar profil.
 - **Manipulasi Fingerprint 5 Vektor**:
-  - **Canvas**: Perturbasi sub-piksel deterministik pada `toDataURL`, `toBlob`, dan `getImageData` (hash kanvas unik tanpa merusak tampilan gambar).
+  - **Canvas**: Perturbasi sub-piksel deterministik pada `toDataURL`, `toBlob`, dan `getImageData` (menghasilkan hash kanvas unik tanpa merusak tampilan visual).
   - **WebGL & GPU**: Mengubah `UNMASKED_VENDOR_WEBGL` (`0x9245`) dan `UNMASKED_RENDERER_WEBGL` (`0x9246`) sesuai profil GPU NVIDIA GeForce RTX, AMD Radeon, Intel Iris/Arc, dan Apple Silicon M1/M2/M3.
   - **AudioContext**: Mikro-perturbasi deterministik pada spektrum frekuensi `AnalyserNode` dan buffer `AudioBuffer`.
   - **Navigator, Client Hints & Layar**: Menyelaraskan `navigator.hardwareConcurrency`, `navigator.deviceMemory` (dibatasi maksimal 8 GB sesuai spesifikasi resmi Chromium), `navigator.platform`, header `Sec-CH-UA`, serta dimensi layar yang memperhitungkan ukuran taskbar.
   - **WebRTC, Geolokasi, Zona Waktu & Geometri DOM**: Mendukung pengaturan otomatis mengikuti lokasi IP proxy (`Based on proxy`) maupun manual, dilengkapi perturbasi `getBoundingClientRect` dan proteksi pemindaian port lokal.
 - **100 Preset Perangkat Bawaan**: Dilengkapi 100 preset perangkat tervalidasi (`stealth_browser/data/presets.json`) yang mencakup 35 laptop/desktop Windows, 25 perangkat macOS, 20 perangkat iOS, dan 20 perangkat Android.
-- **Aplikasi Desktop Native & Dashboard React**:
+- **Aplikasi Desktop Native, Google OAuth 2.0 Gate & Dashboard React**:
   - Berjalan sebagai jendela aplikasi desktop Windows native menggunakan `pywebview` (Edge WebView2) dengan server lokal di `127.0.0.1:58888`.
+  - Dilengkapi gerbang autentikasi desktop **Google-only OAuth 2.0 Loopback + PKCE (RFC 8252)** dengan pembaruan sesi otomatis (`data/auth_session.json`).
   - Mendukung pengelompokan folder, tag, label warna, catatan, pencarian, *Trash Bin* (pemulihan profil terhapus), pemeriksaan konsistensi fingerprint, pengujian koneksi proxy (`HTTP`, `HTTPS`, `SOCKS4`, `SOCKS5`), manajemen ekstensi `.crx` / *unpacked*, serta tema terang dan gelap (*Light/Dark Mode*).
 - **Deteksi Mesin Browser Otomatis**: Mengenali instalasi Chromium, Brave Browser, Google Chrome, dan Microsoft Edge di sistem secara otomatis.
 
@@ -292,13 +297,14 @@ Aplikasi `Octo Browser.exe` resmi merupakan *thin client* yang memblokir pembuat
 ### Struktur Proyek
 
 ```text
-Octo-Browser/
-├── Buka_Octo_Browser_UI.bat                 # Peluncur 1-klik aplikasi desktop native
+Anti-s-Detect-Browser/
+├── Buka_Anti_Detect_Browser.bat             # Peluncur 1-klik aplikasi desktop native
 ├── AntiDetectBrowser.pyw                    # Entrypoint aplikasi desktop tanpa jendela konsol
 ├── desktop_app.pyw                          # Shell native pywebview (Edge WebView2)
 ├── web_ui_server.py                         # Server API HTTP lokal (127.0.0.1:58888)
 ├── run_stealth.py                           # CLI untuk manajemen profil & otomasi terminal
 ├── selfcheck.html                           # Halaman lokal untuk verifikasi mandiri fingerprint
+├── app.ico                                  # Ikon aplikasi Windows multi-resolusi
 ├── stealth_browser/                         # Paket inti mesin anti-detect Python
 │   ├── profile_manager.py                   # CRUD profil, validasi, folder, tag, trash bin
 │   ├── fingerprint.py                       # PRNG deterministik Mulberry32 & builder UA-CH
@@ -312,10 +318,8 @@ Octo-Browser/
 ├── Extension/anti-detect-browser.crx        # Paket ekstensi CRX siap pasang
 ├── frontend/                                # Kode sumber dashboard UI (React 19 + TypeScript + Vite)
 ├── web_ui/                                  # Hasil kompilasi frontend yang disajikan web_ui_server.py
-├── scripts/                                 # Script build & utilitas ekstraksi reverse-engineering
-├── tests/                                   # Pengujian unit & integrasi (API, CRX, profil)
-├── OCTO_BROWSER_REVERSE_ENGINEERING_REPORT.md # Laporan teknis lengkap hasil reverse engineering
-└── README_STEALTH.md                        # Catatan tambahan mesin stealth
+├── scripts/                                 # Script build ikon, preset, ekstensi & aplikasi desktop
+└── tests/                                   # Pengujian unit & integrasi (API, CRX, profil)
 ```
 
 ---
@@ -339,7 +343,7 @@ pip install pywebview playwright
 ### Cara Penggunaan Cepat (Desktop UI)
 
 #### Cara 1: Dobel-Klik File Peluncur (Direkomendasikan)
-Dobel-klik file **`Buka_Octo_Browser_UI.bat`** atau **`AntiDetectBrowser.pyw`**.
+Dobel-klik file **`Buka_Anti_Detect_Browser.bat`** atau **`AntiDetectBrowser.pyw`**.
 Jendela aplikasi desktop akan langsung terbuka tanpa menampilkan jendela terminal di latar belakang.
 
 #### Cara 2: Menjalankan lewat Terminal
@@ -451,18 +455,16 @@ asyncio.run(main())
 
 ---
 
-### Dokumentasi Reverse Engineering
+### Kontributor
 
-Untuk rincian teknis pembongkaran arsitektur Octo Browser v3.2.4 (de-obfuscation XOR 512-byte Caphyon Advanced Installer, ekstraksi PyInstaller, endpoint RPC lokal FastAPI, argumen peluncuran Octium, dan analisis vektor fingerprint), silakan baca:
-- [OCTO_BROWSER_REVERSE_ENGINEERING_REPORT.md](OCTO_BROWSER_REVERSE_ENGINEERING_REPORT.md)
-- [reports/01_electron_orchestration.md](reports/01_electron_orchestration.md)
-- [reports/02_chromium_fingerprint_hooks.md](reports/02_chromium_fingerprint_hooks.md)
+- **Nirvana Handika Putra ([@Juremenn](https://github.com/Juremenn))** - Kreator, Peneliti Keamanan Utama & Arsitek Sistem
+- **Antigravity (Google Gemini / Google DeepMind)** - AI Co-Engineer (Mesin Fingerprint, Desktop Shell, React UI & Arsitektur Google OAuth 2.0 PKCE)
 
 ---
 
 ### Dukungan & Donasi
 
-Jika proyek ini bermanfaat bagi pekerjaan atau riset Anda, Anda dapat memberikan dukungan melalui Saweria:
+Jika proyek ini bermanfaat bagi pekerjaan Anda, Anda dapat memberikan dukungan melalui Saweria:
 
 - ☕ **Buy me a coffee (Saweria):** [https://saweria.co/juremenn](https://saweria.co/juremenn)
 

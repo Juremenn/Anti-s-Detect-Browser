@@ -242,3 +242,34 @@ export interface Extension {
   builtIn?: boolean;
   config?: ExtensionConfig;
 }
+
+export interface AuthUser {
+  sub?: string;
+  name: string;
+  email: string;
+  picture: string;
+}
+
+export interface AuthStatusResponse {
+  authenticated: boolean;
+  configured: boolean;
+  user: AuthUser | null;
+  client_id?: string;
+  has_client_secret?: boolean;
+  pending?: boolean;
+  last_error?: string | null;
+}
+
+export interface AuthConfigResponse {
+  status: string;
+  configured: boolean;
+  client_id: string;
+  has_client_secret?: boolean;
+}
+
+export interface AuthStartResponse {
+  auth_url: string;
+  state: string;
+  redirect_uri?: string;
+}
+

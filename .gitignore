@@ -13,4 +13,7 @@ scripts/.keys/
 data/custom-extensions/
 data/custom_extensions.json
 data/webview_cache/
+data/auth_session.json
+.env
+
 

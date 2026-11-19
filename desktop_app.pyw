@@ -114,7 +114,15 @@ def focus_window(hwnd):
         return
     try:
         user32 = ctypes.windll.user32
-        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+        SW_RESTORE = 9
+        HWND_TOPMOST = -1
+        HWND_NOTOPMOST = -2
+        SWP_NOSIZE = 0x0001
+        SWP_NOMOVE = 0x0002
+        SWP_SHOWWINDOW = 0x0040
+        user32.ShowWindow(hwnd, SW_RESTORE)
+        user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+        user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
         user32.SetForegroundWindow(hwnd)
     except Exception as e:
         logger.warning(f"Failed to focus window: {e}")
@@ -245,6 +253,17 @@ def main():
         background_color="#F8FAFC"
     )
     bridge._set_window(window)
+
+    def _restore_and_focus_pywebview():
+        try:
+            window.restore()
+        except Exception:
+            pass
+        hwnd = find_existing_window()
+        if hwnd:
+            focus_window(hwnd)
+
+    web_ui_server.register_window_focus_callback(_restore_and_focus_pywebview)
 
     try:
         logger.info("Starting pywebview GUI loop with Edge WebView2...")

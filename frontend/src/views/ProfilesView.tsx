@@ -85,15 +85,15 @@ export function ProfilesView({
 
   // Saved sorting in localStorage
   const [sortField, setSortField] = useState<SortField>(() => {
-    return (localStorage.getItem('octo_sort_field') as SortField) || 'name';
+    return (localStorage.getItem('anti_detect_sort_field') as SortField) || 'name';
   });
   const [sortDir, setSortDir] = useState<SortDirection>(() => {
-    return (localStorage.getItem('octo_sort_dir') as SortDirection) || 'asc';
+    return (localStorage.getItem('anti_detect_sort_dir') as SortDirection) || 'asc';
   });
 
   useEffect(() => {
-    localStorage.setItem('octo_sort_field', sortField);
-    localStorage.setItem('octo_sort_dir', sortDir);
+    localStorage.setItem('anti_detect_sort_field', sortField);
+    localStorage.setItem('anti_detect_sort_dir', sortDir);
   }, [sortField, sortDir]);
 
   function handleSort(field: SortField) {

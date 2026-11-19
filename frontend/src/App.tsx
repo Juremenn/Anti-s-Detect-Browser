@@ -9,6 +9,8 @@ import { t } from './i18n';
 import { ProfileEditDialog } from './modals/ProfileEditDialog';
 import {
   AppSettings,
+  AuthStatusResponse,
+  AuthUser,
   CreateProfilePayload,
   Preset,
   Profile,
@@ -18,6 +20,7 @@ import {
   TrashItem,
 } from './types';
 import { ExtensionsView } from './views/ExtensionsView';
+import { LoginView } from './views/LoginView';
 import { ProfilesView } from './views/ProfilesView';
 import { ProxiesView } from './views/ProxiesView';
 import { SettingsView } from './views/SettingsView';
@@ -26,10 +29,15 @@ import { TrashView } from './views/TrashView';
 
 function AppContent() {
   const { confirm } = useConfirm();
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authStatus, setAuthStatus] = useState<AuthStatusResponse | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('profiles');
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
   const [proxies, setProxies] = useState<ProxyItem[]>([]);
+  const [extensionsCount, setExtensionsCount] = useState<number>(0);
   const [presets, setPresets] = useState<Preset[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
     browser_path: '',
@@ -150,16 +158,59 @@ function AppContent() {
     }
   }, []);
 
+  const loadExtensionsCount = useCallback(async () => {
+    try {
+      const data = await api.getExtensions();
+      setExtensionsCount((data.extensions || []).length);
+    } catch (e) {
+      console.error('Failed to load extensions:', e);
+    }
+  }, []);
+
   useEffect(() => {
+    let cancelled = false;
+    async function checkInitialAuth() {
+      try {
+        const status = await api.getAuthStatus();
+        if (cancelled) return;
+        setAuthStatus(status);
+        setAuthenticated(Boolean(status.authenticated && status.user));
+        setAuthUser(status.user || null);
+      } catch (e) {
+        console.error('Failed to verify auth status:', e);
+      } finally {
+        if (!cancelled) {
+          setAuthLoading(false);
+        }
+      }
+    }
+    checkInitialAuth();
+
+    function handleUnauthorized() {
+      setAuthenticated(false);
+      setAuthUser(null);
+      setAuthStatus((prev) => (prev ? { ...prev, authenticated: false, user: null } : null));
+    }
+    window.addEventListener('anti_detect_auth_unauthorized', handleUnauthorized);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('anti_detect_auth_unauthorized', handleUnauthorized);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!authenticated) return;
     loadProfiles();
     loadTrash();
     loadProxies();
     loadPresets();
     loadSettings();
-  }, [loadProfiles, loadTrash, loadProxies, loadPresets, loadSettings]);
+    loadExtensionsCount();
+  }, [authenticated, loadProfiles, loadTrash, loadProxies, loadPresets, loadSettings, loadExtensionsCount]);
 
-  // Polling every 3s, paused when modal is open to ensure zero interaction lag
+  // Polling every 3s, paused when unauthenticated or when modal is open to ensure zero interaction lag
   useEffect(() => {
+    if (!authenticated) return;
     const isModalOpen = createModalOpen || !!editFpName;
     if (isModalOpen) return;
 
@@ -171,10 +222,11 @@ function AppContent() {
       }
     }, 3000);
     return () => clearInterval(timer);
-  }, [activeTab, loadProfiles, loadTrash, createModalOpen, editFpName]);
+  }, [authenticated, activeTab, loadProfiles, loadTrash, createModalOpen, editFpName]);
 
-  // Global Ctrl+N
+  // Global Ctrl+N (only when authenticated)
   useEffect(() => {
+    if (!authenticated) return;
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
@@ -183,7 +235,7 @@ function AppContent() {
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [authenticated]);
 
   // Collect all unique tags for filter
   const allTags = useMemo(() => {
@@ -462,6 +514,73 @@ function AppContent() {
     }
   }
 
+  async function handleSignOut() {
+    const confirmed = await confirm({
+      title: 'Sign Out',
+      description:
+        'Sign out of your Google account on this device? You will need to sign in with Google again to access your workspace.',
+      confirmLabel: 'Sign Out',
+      cancelLabel: 'Cancel',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
+    try {
+      await api.logout();
+    } catch (e) {
+      console.error('Failed to sign out cleanly:', e);
+    }
+
+    setAuthenticated(false);
+    setAuthUser(null);
+    setProfiles([]);
+    setTrashItems([]);
+    setProxies([]);
+    setSelectedProfiles(new Set());
+    try {
+      const status = await api.getAuthStatus();
+      setAuthStatus(status);
+    } catch {
+      setAuthStatus((prev) => (prev ? { ...prev, authenticated: false, user: null } : null));
+    }
+  }
+
+  if (authLoading) {
+    return (
+      <main
+        aria-label="Verifying authentication status"
+        style={{
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: '#F8FAFC',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#475569',
+          fontSize: 13,
+          fontWeight: 500,
+        }}
+      >
+        Verifying session...
+      </main>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <LoginView
+        initialStatus={authStatus}
+        onStatusUpdated={(status) => {
+          setAuthStatus(status);
+        }}
+        onAuthenticated={(user) => {
+          setAuthUser(user);
+          setAuthenticated(true);
+        }}
+      />
+    );
+  }
+
   const runningCount = profiles.filter((p) => p.is_active).length;
 
   return (
@@ -472,9 +591,11 @@ function AppContent() {
         profilesCount={profiles.length}
         trashCount={trashItems.length}
         proxiesCount={proxies.length}
-        extensionsCount={1}
+        extensionsCount={extensionsCount}
         activeEngine={activeEngine}
         runningCount={runningCount}
+        user={authUser}
+        onSignOut={handleSignOut}
       />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: 'var(--bg-base)' }}>
@@ -565,7 +686,9 @@ function AppContent() {
           />
         )}
 
-        {activeTab === 'extensions' && <ExtensionsView onToast={addToast} />}
+        {activeTab === 'extensions' && (
+          <ExtensionsView onToast={addToast} onCountChange={setExtensionsCount} />
+        )}
 
         {activeTab === 'trash' && (
           <TrashView

@@ -3,7 +3,7 @@ import { id } from './id';
 
 export type Language = 'en' | 'id';
 
-let currentLang: Language = (localStorage.getItem('octo_lang') as Language) || 'en';
+let currentLang: Language = (localStorage.getItem('anti_detect_lang') as Language) || 'en';
 
 export function getLanguage(): Language {
   return currentLang;
@@ -11,8 +11,8 @@ export function getLanguage(): Language {
 
 export function setLanguage(lang: Language) {
   currentLang = lang;
-  localStorage.setItem('octo_lang', lang);
-  window.dispatchEvent(new Event('octo_lang_change'));
+  localStorage.setItem('anti_detect_lang', lang);
+  window.dispatchEvent(new Event('anti_detect_lang_change'));
 }
 
 export function getTranslations(): Translations {

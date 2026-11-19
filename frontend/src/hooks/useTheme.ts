@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ResolvedTheme, ThemeMode } from '../types';
 
-const STORAGE_KEY = 'octo_theme_mode_v2';
+const STORAGE_KEY = 'anti_detect_theme_mode_v2';
 
 export function useTheme() {
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => {

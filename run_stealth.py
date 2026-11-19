@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-run_stealth.py - Command-line interface for the Octo Reverse-Engineered Stealth Browser.
+run_stealth.py - Command-line interface for Anti's Detect Browser.
 Run stealth anti-detect profiles locally with zero cloud dependencies or login requirements.
 """
 
@@ -14,7 +14,7 @@ from stealth_browser.launcher import StealthLauncher
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Stealth Browser CLI - Reverse-Engineered Anti-Detect Automation Runner",
+        description="Anti's Detect Browser CLI - Local Anti-Detect Automation Runner",
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument("--profile", "-p", default="stealth_identity_1", help="Profile name to load or create")

@@ -1,7 +1,6 @@
 """
-Stealth Browser Package
-Replication of Octo Browser's Anti-Detect Architecture
-Reverse-engineered for offline, account-free multi-accounting & automation.
+Anti's Detect Browser Core Package
+Offline, account-free multi-profile isolation and fingerprint management engine.
 """
 
 __version__ = "1.0.0"

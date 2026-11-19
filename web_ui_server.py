@@ -5,23 +5,29 @@ Binds to 127.0.0.1 only and rejects requests from other origins.
 """
 
 import base64
+import ctypes
 import hashlib
+import html
 import io
 import json
 import os
 import re
+import secrets
 import shutil
 import struct
 import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
+import webbrowser
 import zipfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Dict, List, Optional
-from urllib.parse import parse_qs, urlparse
+from typing import Callable, Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from stealth_browser.consistency import evaluate as evaluate_consistency
 from stealth_browser.fingerprint import resolve_overrides
@@ -33,14 +39,30 @@ PORT = 58888
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web_ui"
 SETTINGS_FILE = ROOT / "app_settings.json"
+ENV_FILE = ROOT / ".env"
 PROXIES_FILE = ROOT / "proxies.json"
 MAX_BODY = 50 * 1024 * 1024
 CUSTOM_EXTENSIONS_FILE = ROOT / "data" / "custom_extensions.json"
 CUSTOM_EXTENSIONS_DIR = ROOT / "data" / "custom-extensions"
+AUTH_SESSION_FILE = ROOT / "data" / "auth_session.json"
+
+GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo"
+GOOGLE_REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke"
+GOOGLE_CLIENT_ID_RE = re.compile(r"^[a-zA-Z0-9._-]+\.apps\.googleusercontent\.com$")
+OAUTH_STATE_TTL_SECONDS = 600
+
+# Built-in Google Desktop App OAuth 2.0 Client (RFC 8252 public installed application credentials)
+DEFAULT_GOOGLE_CLIENT_ID = "764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com"
+DEFAULT_GOOGLE_CLIENT_SECRET = "d-FL95Q19q7MQmFpd7hHD0Ty"
+
 DEFAULT_SETTINGS = {
     "browser_path": "",
     "start_url": "https://browserleaks.com/canvas",
     "mask_webrtc": True,
+    "google_client_id": DEFAULT_GOOGLE_CLIENT_ID,
+    "google_client_secret": DEFAULT_GOOGLE_CLIENT_SECRET,
 }
 ALLOWED_ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 
@@ -110,21 +132,238 @@ active_overrides: Dict[str, dict] = {}
 proc_lock = threading.Lock()
 
 
+def _load_dotenv_file() -> Dict[str, str]:
+    values: Dict[str, str] = {}
+    if not ENV_FILE.is_file():
+        return values
+    try:
+        for raw_line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip()
+            val = val.strip()
+            if len(val) >= 2 and ((val[0] == '"' and val[-1] == '"') or (val[0] == "'" and val[-1] == "'")):
+                val = val[1:-1]
+            if key:
+                values[key] = val
+    except OSError:
+        pass
+    return values
+
+
 def load_settings() -> dict:
-    settings = dict(DEFAULT_SETTINGS)
+    dotenv_vals = _load_dotenv_file()
+    s = dict(DEFAULT_SETTINGS)
+    if dotenv_vals.get("GOOGLE_CLIENT_ID"):
+        s["google_client_id"] = dotenv_vals["GOOGLE_CLIENT_ID"]
+    if dotenv_vals.get("GOOGLE_CLIENT_SECRET"):
+        s["google_client_secret"] = dotenv_vals["GOOGLE_CLIENT_SECRET"]
+    if os.environ.get("GOOGLE_CLIENT_ID"):
+        s["google_client_id"] = os.environ["GOOGLE_CLIENT_ID"].strip()
+    if os.environ.get("GOOGLE_CLIENT_SECRET"):
+        s["google_client_secret"] = os.environ["GOOGLE_CLIENT_SECRET"].strip()
     try:
         if SETTINGS_FILE.exists():
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 stored = json.load(f)
-            settings.update({k: v for k, v in stored.items() if k in DEFAULT_SETTINGS})
+            for k, v in stored.items():
+                if k in DEFAULT_SETTINGS and v not in (None, ""):
+                    s[k] = v
+                elif k in ("browser_path", "start_url", "mask_webrtc") and k in stored:
+                    s[k] = v
     except (OSError, ValueError):
         pass
-    return settings
+    return s
 
 
 def save_settings(settings_data: dict):
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(settings_data, f, indent=2)
+
+
+def is_valid_google_client_id(client_id: str) -> bool:
+    if not client_id or not isinstance(client_id, str):
+        return False
+    return bool(GOOGLE_CLIENT_ID_RE.match(client_id.strip()))
+
+
+def get_google_oauth_config() -> Tuple[str, str]:
+    dotenv_vals = _load_dotenv_file()
+    client_id = (
+        str(settings.get("google_client_id") or "").strip()
+        or os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+        or dotenv_vals.get("GOOGLE_CLIENT_ID", "").strip()
+        or DEFAULT_GOOGLE_CLIENT_ID
+    )
+    client_secret = (
+        str(settings.get("google_client_secret") or "").strip()
+        or os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+        or dotenv_vals.get("GOOGLE_CLIENT_SECRET", "").strip()
+    )
+    if client_id == DEFAULT_GOOGLE_CLIENT_ID and not client_secret:
+        client_secret = DEFAULT_GOOGLE_CLIENT_SECRET
+    return client_id, client_secret
+
+
+auth_lock = threading.Lock()
+pending_oauth_states: Dict[str, dict] = {}
+_last_auth_error: Optional[str] = None
+_window_focus_callbacks: List[Callable[[], None]] = []
+
+
+def register_window_focus_callback(cb: Callable[[], None]):
+    if cb not in _window_focus_callbacks:
+        _window_focus_callbacks.append(cb)
+
+
+def focus_desktop_window():
+    """Restore and bring the native pywebview desktop window to the foreground after OAuth callback."""
+    for cb in list(_window_focus_callbacks):
+        try:
+            cb()
+        except Exception:
+            pass
+    if sys.platform != "win32":
+        return
+    try:
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW(None, "Anti's Detect Browser")
+        if not hwnd:
+            return
+        SW_RESTORE = 9
+        HWND_TOPMOST = -1
+        HWND_NOTOPMOST = -2
+        SWP_NOSIZE = 0x0001
+        SWP_NOMOVE = 0x0002
+        SWP_SHOWWINDOW = 0x0040
+        user32.ShowWindow(hwnd, SW_RESTORE)
+        user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+        user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+        user32.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
+
+
+def _decode_jwt_payload(jwt_token: str) -> dict:
+    try:
+        parts = jwt_token.split(".")
+        if len(parts) != 3:
+            return {}
+        payload_b64 = parts[1]
+        padding = "=" * ((4 - len(payload_b64) % 4) % 4)
+        raw = base64.urlsafe_b64decode((payload_b64 + padding).encode("ascii"))
+        data = json.loads(raw.decode("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def load_auth_session() -> Optional[dict]:
+    if not AUTH_SESSION_FILE.is_file():
+        return None
+    try:
+        with open(AUTH_SESSION_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return None
+        if not data.get("sub") or not data.get("email"):
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def save_auth_session(session_data: dict):
+    AUTH_SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp_file = AUTH_SESSION_FILE.with_suffix(".json.tmp")
+    with open(tmp_file, "w", encoding="utf-8") as f:
+        json.dump(session_data, f, indent=2)
+    os.replace(tmp_file, AUTH_SESSION_FILE)
+
+
+def clear_auth_session():
+    try:
+        if AUTH_SESSION_FILE.is_file():
+            AUTH_SESSION_FILE.unlink()
+    except OSError:
+        pass
+
+
+def _refresh_google_token(session: dict) -> Optional[dict]:
+    """Use stored refresh_token to obtain a fresh access_token when expired."""
+    refresh_token = str(session.get("refresh_token") or "").strip()
+    if not refresh_token:
+        return None
+    client_id, client_secret = get_google_oauth_config()
+    if not is_valid_google_client_id(client_id):
+        return session
+    payload = {
+        "client_id": client_id,
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+    }
+    if client_secret:
+        payload["client_secret"] = client_secret
+    body = urlencode(payload).encode("utf-8")
+    req = urllib.request.Request(
+        GOOGLE_TOKEN_ENDPOINT,
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            token_data = json.loads(resp.read().decode("utf-8"))
+        access_token = token_data.get("access_token")
+        if not access_token:
+            return session
+        expires_in = int(token_data.get("expires_in") or 3600)
+        session["access_token"] = access_token
+        session["expires_at"] = int(time.time() + expires_in)
+        if token_data.get("refresh_token"):
+            session["refresh_token"] = token_data["refresh_token"]
+        if token_data.get("id_token"):
+            claims = _decode_jwt_payload(token_data["id_token"])
+            if claims.get("name"):
+                session["name"] = claims["name"]
+            if claims.get("picture"):
+                session["picture"] = claims["picture"]
+        save_auth_session(session)
+        return session
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 401):
+            clear_auth_session()
+            return None
+        return session
+    except Exception:
+        # Preserve local desktop session on transient offline startup
+        return session
+
+
+def get_authenticated_user() -> Optional[dict]:
+    """Return verified session user dict, refreshing token automatically if expired."""
+    with auth_lock:
+        session = load_auth_session()
+        if not session:
+            return None
+        expires_at = float(session.get("expires_at") or 0)
+        now = time.time()
+        if now >= expires_at - 60:
+            if session.get("refresh_token"):
+                session = _refresh_google_token(session)
+                if not session:
+                    return None
+            elif now >= expires_at:
+                clear_auth_session()
+                return None
+        return {
+            "sub": str(session.get("sub") or ""),
+            "name": str(session.get("name") or session.get("email") or ""),
+            "email": str(session.get("email") or ""),
+            "picture": str(session.get("picture") or ""),
+        }
 
 
 def load_proxies() -> List[dict]:
@@ -302,14 +541,24 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _send_html(self, html_content: str, status: int = 200):
+        payload = html_content.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def _error(self, message: str, status: int = 400):
         self._send_json({"error": message}, status=status)
 
     def _same_origin(self) -> bool:
+        active_port = self.server.server_address[1] if hasattr(self, "server") and self.server else PORT
+        allowed = set(ALLOWED_ORIGINS) | {f"http://127.0.0.1:{active_port}", f"http://localhost:{active_port}"}
         origin = self.headers.get("Origin")
         if origin is not None:
-            return origin in ALLOWED_ORIGINS
-        return self.headers.get("Host", "") in {o.split("//", 1)[1] for o in ALLOWED_ORIGINS}
+            return origin in allowed
+        return self.headers.get("Host", "") in {o.split("//", 1)[1] for o in allowed}
 
     def _read_body(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
@@ -330,6 +579,16 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+
+        # OAuth 2.0 loopback redirect from Google in external browser
+        if path == "/api/auth/google/callback":
+            return self._run(self._auth_google_callback)
+
+        if path == "/api/auth/status":
+            if not self._same_origin():
+                return self._error("Origin tidak diizinkan.", 403)
+            return self._run(self._auth_status)
+
         routes = {
             "/api/profiles": self._get_profiles,
             "/api/trash": lambda: self._send_json({"items": profile_mgr.list_trash()}),
@@ -344,15 +603,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/geoip/status": lambda: self._send_json({
                 "db": (proxy_utils.find_mmdb().name if proxy_utils.find_mmdb() else None)}),
         }
-        if path in routes:
+        if path.startswith("/api/"):
             if not self._same_origin():
                 return self._error("Origin tidak diizinkan.", 403)
-            return self._run(routes[path])
+            if not get_authenticated_user():
+                return self._send_json({"error": "Authentication required.", "authenticated": False}, status=401)
+            if path in routes:
+                return self._run(routes[path])
+            return self._error("Endpoint tidak ditemukan.", 404)
+
         if path == "/selfcheck":
             # Served from the repo root, not web_ui/ (the vite build empties it).
             return self._serve_selfcheck()
-        if path.startswith("/api/"):
-            return self._error("Endpoint tidak ditemukan.", 404)
         super().do_GET()
 
     def _serve_selfcheck(self):
@@ -372,6 +634,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return self._error("Origin tidak diizinkan.", 403)
         if "application/json" not in (self.headers.get("Content-Type") or ""):
             return self._error("Content-Type harus application/json.", 415)
+
+        auth_routes = {
+            "/api/auth/config": self._auth_config,
+            "/api/auth/google/start": self._auth_google_start,
+            "/api/auth/google/cancel": self._auth_google_cancel,
+            "/api/auth/logout": self._auth_logout,
+        }
+        if path in auth_routes:
+            return self._run(lambda: auth_routes[path](self._read_body()))
+
+        if not get_authenticated_user():
+            return self._send_json({"error": "Authentication required.", "authenticated": False}, status=401)
+
         routes = {
             "/api/profiles/start": self._start,
             "/api/profiles/stop": self._stop,
@@ -416,6 +691,426 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             self._error(f"Kesalahan server: {e}", 500)
 
+    # --- OAuth 2.0 + PKCE handlers ---------------------------------------------
+
+    def _prune_pending_oauth_states(self):
+        now = time.time()
+        expired = [
+            st for st, info in pending_oauth_states.items()
+            if now - float(info.get("created_at") or 0) > OAUTH_STATE_TTL_SECONDS
+        ]
+        for st in expired:
+            pending_oauth_states.pop(st, None)
+
+    def _auth_status(self):
+        client_id, client_secret = get_google_oauth_config()
+        configured = is_valid_google_client_id(client_id)
+        user = get_authenticated_user()
+        with auth_lock:
+            self._prune_pending_oauth_states()
+            pending = len(pending_oauth_states) > 0
+            last_error = _last_auth_error
+        self._send_json({
+            "authenticated": user is not None,
+            "configured": configured,
+            "user": user,
+            "client_id": client_id if configured else "",
+            "has_client_secret": bool(client_secret),
+            "pending": pending,
+            "last_error": last_error,
+        })
+
+    def _auth_config(self, data: dict):
+        global _last_auth_error
+        raw_client_id = str(data.get("google_client_id") or "").strip()
+        if not is_valid_google_client_id(raw_client_id):
+            raise ProfileError("Invalid Google OAuth Client ID. Must end with .apps.googleusercontent.com.")
+
+        settings["google_client_id"] = raw_client_id
+        if "google_client_secret" in data and data.get("google_client_secret") is not None:
+            settings["google_client_secret"] = str(data.get("google_client_secret") or "").strip()
+
+        save_settings(settings)
+        with auth_lock:
+            _last_auth_error = None
+        self._send_json({
+            "status": "ok",
+            "configured": True,
+            "client_id": raw_client_id,
+            "has_client_secret": bool(settings.get("google_client_secret")),
+        })
+
+    def _auth_google_start(self, data: dict):
+        global _last_auth_error
+        client_id, _ = get_google_oauth_config()
+        if not is_valid_google_client_id(client_id):
+            raise ProfileError("Google OAuth Client ID is not configured.")
+
+        state = secrets.token_urlsafe(32)
+        code_verifier = secrets.token_urlsafe(64)
+        digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+        code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+        active_port = self.server.server_address[1] if hasattr(self, "server") and self.server else PORT
+        redirect_uri = f"http://127.0.0.1:{active_port}/api/auth/google/callback"
+
+        with auth_lock:
+            self._prune_pending_oauth_states()
+            pending_oauth_states[state] = {
+                "code_verifier": code_verifier,
+                "redirect_uri": redirect_uri,
+                "created_at": time.time(),
+            }
+            _last_auth_error = None
+
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "state": state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "access_type": "offline",
+            "prompt": "select_account",
+        }
+        auth_url = f"{GOOGLE_AUTH_ENDPOINT}?{urlencode(params)}"
+
+        if data.get("open_browser", True) is not False:
+            try:
+                webbrowser.open(auth_url, new=2)
+            except Exception:
+                pass
+
+        self._send_json({
+            "auth_url": auth_url,
+            "state": state,
+            "redirect_uri": redirect_uri,
+        })
+
+    def _auth_google_cancel(self, _data: dict):
+        global _last_auth_error
+        with auth_lock:
+            pending_oauth_states.clear()
+            _last_auth_error = None
+        self._send_json({"status": "canceled"})
+
+    def _render_oauth_callback_html(self, success: bool, title: str, message: str) -> str:
+        safe_title = html.escape(title)
+        safe_message = html.escape(message)
+        status_color = "#15803D" if success else "#DC2626"
+        status_bg = "#F0FDF4" if success else "#FEF2F2"
+        status_border = "#BBF7D0" if success else "#FECACA"
+        auto_close_script = (
+            """
+            <script>
+              setTimeout(function() {
+                try {
+                  window.open('', '_self', '');
+                  window.close();
+                } catch (e) {}
+              }, 350);
+            </script>
+            """
+            if success
+            else ""
+        )
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{safe_title} - Anti's Detect Browser</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #F8FAFC;
+      color: #0F172A;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 24px;
+      -webkit-font-smoothing: antialiased;
+    }}
+    .card {{
+      width: 100%;
+      max-width: 380px;
+      background: #FFFFFF;
+      border: 1px solid #E5E7EB;
+      border-radius: 14px;
+      box-shadow: 0 16px 36px -12px rgba(15, 23, 42, 0.08);
+      padding: 28px 24px;
+      text-align: center;
+    }}
+    .logo {{
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 16px auto;
+      display: block;
+    }}
+    h1 {{
+      font-size: 16px;
+      font-weight: 600;
+      color: #0F172A;
+      margin-bottom: 8px;
+      letter-spacing: -0.015em;
+    }}
+    p {{
+      font-size: 13px;
+      line-height: 1.5;
+      color: #475569;
+      margin-bottom: 18px;
+    }}
+    .badge {{
+      display: inline-block;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: {status_color};
+      background: {status_bg};
+      border: 1px solid {status_border};
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }}
+    button {{
+      width: 100%;
+      height: 40px;
+      border-radius: 8px;
+      border: 1px solid #CBD5E1;
+      background: #FFFFFF;
+      color: #0F172A;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }}
+    button:hover {{
+      background: #F8FAFC;
+    }}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <svg class="logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect width="32" height="32" rx="8" fill="#5B4FE9" />
+      <path d="M16 5.5L25 9.5V16.2C25 21.6 21.1 25.9 16 27.5C10.9 25.9 7 21.6 7 16.2V9.5L16 5.5Z" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round" fill="rgba(255,255,255,0.12)" />
+      <path d="M16 10.5L11.5 21.5M16 10.5L20.5 21.5M13.2 17.8H18.8" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="16" cy="14.2" r="1.4" fill="#A5F3FC" />
+    </svg>
+    <div class="badge">{safe_title}</div>
+    <h1>Anti's Detect Browser</h1>
+    <p>{safe_message}</p>
+    <button type="button" onclick="window.close()">Close Tab</button>
+  </main>
+  {auto_close_script}
+</body>
+</html>"""
+
+    def _auth_google_callback(self):
+        global _last_auth_error
+        parsed = urlparse(self.path)
+        qs = parse_qs(parsed.query)
+        state = (qs.get("state") or [""])[0].strip()
+        code = (qs.get("code") or [""])[0].strip()
+        oauth_error = (qs.get("error") or [""])[0].strip()
+
+        if oauth_error:
+            err_desc = (qs.get("error_description") or [oauth_error])[0]
+            with auth_lock:
+                if state:
+                    pending_oauth_states.pop(state, None)
+                _last_auth_error = f"Google sign-in failed: {err_desc}"
+            threading.Thread(target=focus_desktop_window, daemon=True).start()
+            return self._send_html(
+                self._render_oauth_callback_html(
+                    False,
+                    "Sign-In Canceled",
+                    f"Google returned an error ({oauth_error}). Return to Anti's Detect Browser to try again.",
+                ),
+                status=400,
+            )
+
+        with auth_lock:
+            self._prune_pending_oauth_states()
+            pending = pending_oauth_states.pop(state, None) if state else None
+
+        if not pending or not code:
+            with auth_lock:
+                _last_auth_error = "Invalid or expired OAuth state parameter. Please try signing in again."
+            threading.Thread(target=focus_desktop_window, daemon=True).start()
+            return self._send_html(
+                self._render_oauth_callback_html(
+                    False,
+                    "Verification Failed",
+                    "Invalid or expired authentication state token. Return to Anti's Detect Browser and try again.",
+                ),
+                status=400,
+            )
+
+        client_id, client_secret = get_google_oauth_config()
+        token_params = {
+            "client_id": client_id,
+            "code": code,
+            "code_verifier": pending["code_verifier"],
+            "grant_type": "authorization_code",
+            "redirect_uri": pending["redirect_uri"],
+        }
+        if client_secret:
+            token_params["client_secret"] = client_secret
+
+        req = urllib.request.Request(
+            GOOGLE_TOKEN_ENDPOINT,
+            data=urlencode(token_params).encode("utf-8"),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                token_data = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            err_body = ""
+            try:
+                err_body = e.read().decode("utf-8", errors="replace")
+                err_json = json.loads(err_body)
+                detail = err_json.get("error_description") or err_json.get("error") or err_body
+            except Exception:
+                detail = err_body or str(e)
+            if "client_secret" in str(detail).lower():
+                friendly = "Google requires the OAuth Client Secret for this Desktop Client ID. Add your Client Secret in the setup box."
+            else:
+                friendly = f"Token exchange failed: {detail}"
+            with auth_lock:
+                _last_auth_error = friendly
+            threading.Thread(target=focus_desktop_window, daemon=True).start()
+            return self._send_html(
+                self._render_oauth_callback_html(False, "Authentication Error", friendly),
+                status=400,
+            )
+        except Exception as e:
+            with auth_lock:
+                _last_auth_error = f"Unable to reach Google OAuth token endpoint: {e}"
+            threading.Thread(target=focus_desktop_window, daemon=True).start()
+            return self._send_html(
+                self._render_oauth_callback_html(
+                    False,
+                    "Network Error",
+                    f"Unable to reach Google OAuth token server ({e}). Check your network connection.",
+                ),
+                status=502,
+            )
+
+        access_token = str(token_data.get("access_token") or "").strip()
+        id_token = str(token_data.get("id_token") or "").strip()
+        id_claims = _decode_jwt_payload(id_token) if id_token else {}
+
+        if id_claims:
+            iss = id_claims.get("iss")
+            aud = id_claims.get("aud")
+            exp = float(id_claims.get("exp") or 0)
+            if iss not in ("https://accounts.google.com", "accounts.google.com") or aud != client_id or exp < time.time() - 60:
+                with auth_lock:
+                    _last_auth_error = "Google ID token verification failed (audience or issuer mismatch)."
+                threading.Thread(target=focus_desktop_window, daemon=True).start()
+                return self._send_html(
+                    self._render_oauth_callback_html(
+                        False,
+                        "Verification Error",
+                        "Google ID token verification failed. Please try signing in again.",
+                    ),
+                    status=400,
+                )
+
+        userinfo = {}
+        if access_token:
+            try:
+                u_req = urllib.request.Request(
+                    GOOGLE_USERINFO_ENDPOINT,
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    method="GET",
+                )
+                with urllib.request.urlopen(u_req, timeout=8) as u_resp:
+                    userinfo = json.loads(u_resp.read().decode("utf-8"))
+            except Exception:
+                userinfo = {}
+
+        sub = str(userinfo.get("sub") or id_claims.get("sub") or "").strip()
+        email = str(userinfo.get("email") or id_claims.get("email") or "").strip()
+        name = str(userinfo.get("name") or id_claims.get("name") or (email.split("@")[0] if email else "")).strip()
+        picture = str(userinfo.get("picture") or id_claims.get("picture") or "").strip()
+
+        if not sub or not email:
+            with auth_lock:
+                _last_auth_error = "Could not verify Google account identity (missing sub or email)."
+            threading.Thread(target=focus_desktop_window, daemon=True).start()
+            return self._send_html(
+                self._render_oauth_callback_html(
+                    False,
+                    "Profile Verification Failed",
+                    "Google did not return a valid account email and subject identifier.",
+                ),
+                status=400,
+            )
+
+        with auth_lock:
+            existing = load_auth_session()
+            refresh_token = str(token_data.get("refresh_token") or "").strip()
+            if not refresh_token and existing and existing.get("sub") == sub:
+                refresh_token = str(existing.get("refresh_token") or "").strip()
+            expires_in = int(token_data.get("expires_in") or 3600)
+            session_obj = {
+                "sub": sub,
+                "email": email,
+                "name": name,
+                "picture": picture,
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "expires_at": int(time.time() + expires_in),
+                "authenticated_at": int(time.time()),
+            }
+            save_auth_session(session_obj)
+            pending_oauth_states.clear()
+            _last_auth_error = None
+
+        def _delayed_focus():
+            time.sleep(0.15)
+            focus_desktop_window()
+
+        threading.Thread(target=_delayed_focus, daemon=True).start()
+
+        return self._send_html(
+            self._render_oauth_callback_html(
+                True,
+                "Authentication Complete",
+                "Authentication complete. You can close this tab and return to Anti's Detect Browser.",
+            ),
+            status=200,
+        )
+
+    def _auth_logout(self, _data: dict):
+        global _last_auth_error
+        with auth_lock:
+            session = load_auth_session()
+            clear_auth_session()
+            pending_oauth_states.clear()
+            _last_auth_error = None
+
+        if session:
+            token_to_revoke = str(session.get("refresh_token") or session.get("access_token") or "").strip()
+            if token_to_revoke:
+                try:
+                    rev_req = urllib.request.Request(
+                        f"{GOOGLE_REVOKE_ENDPOINT}?{urlencode({'token': token_to_revoke})}",
+                        data=b"",
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                        method="POST",
+                    )
+                    urllib.request.urlopen(rev_req, timeout=2).close()
+                except Exception:
+                    pass
+
+        self._send_json({"status": "logged_out", "authenticated": False})
+
     # --- handlers --------------------------------------------------------------
 
     def _get_profiles(self):
@@ -449,8 +1144,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self._send_json({"presets": out})
 
     def _get_settings(self):
+        public_settings = {k: v for k, v in settings.items() if k != "google_client_secret"}
         self._send_json({
-            **settings,
+            **public_settings,
+            "has_client_secret": bool(settings.get("google_client_secret")),
             "active_browser_path": launcher.chrome_path,
             "engine_version": detect_engine_version(),
             "browsers": discover_available_browsers(),
@@ -1045,7 +1742,7 @@ def launch_in_app_window(port: int):
 def server_already_running(port: int) -> bool:
     try:
         req = urllib.request.Request(
-            f"http://127.0.0.1:{port}/api/presets",
+            f"http://127.0.0.1:{port}/api/auth/status",
             headers={"Host": f"127.0.0.1:{port}"}
         )
         with urllib.request.urlopen(req, timeout=1) as r:
