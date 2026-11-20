@@ -50,7 +50,7 @@ Dengan memadukan emulasi runtime *Chrome DevTools Protocol* (CDP) dan injeksi ek
 
 ## 2. Fitur Utama
 
-- **Login Google OAuth 2.0 & Penyimpanan Lokal**: Masuk menggunakan akun Google melalui callback lokal (`127.0.0.1`), dengan seluruh konfigurasi dan folder `UserData` profil tetap tersimpan di komputer Anda (`profiles/`).
+- **Login Google OAuth 2.0 & Sinkronisasi Cloud Terenkripsi**: Masuk menggunakan akun Google melalui callback lokal (`127.0.0.1`). Profil, cookies, proksi, dan ekstensi disimpan terisolasi per akun (`%LOCALAPPDATA%\AntiDetectBrowser\accounts\<hash>\`) agar tetap aman saat Sign Out serta tersinkronisasi lintas perangkat menggunakan enkripsi AES-256-GCM melalui Google Drive `appDataFolder`.
 - **Identitas Deterministik Berbasis Seed**: Menggunakan `identity_seed` 64-bit dengan algoritma PRNG Mulberry32 (`stealth_browser/fingerprint.py`). Setiap profil selalu menghasilkan sidik jari perangkat yang konsisten saat dibuka kembali, namun tetap unik antar profil.
 - **Manipulasi Fingerprint 5 Vektor**:
   - **Canvas**: Perturbasi sub-piksel deterministik pada `toDataURL`, `toBlob`, dan `getImageData` tanpa distorsi visual.
@@ -84,9 +84,9 @@ pip install pywebview playwright
 
 ## 4. Cara Penggunaan Cepat (Desktop UI)
 
-### Cara 1: Installer Resmi Windows (`AntiDetectBrowser-Setup-v1.0.0.exe` - Direkomendasikan)
-1. Buka halaman [**GitHub Releases**](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest) lalu unduh **`AntiDetectBrowser-Setup-v1.0.0.exe`** (serta ekstensi mandiri opsional **`anti-detect-browser.crx`**).
-2. Jalankan **`AntiDetectBrowser-Setup-v1.0.0.exe`** untuk memasang **Anti's Detect Browser** lengkap dengan pintasan Start Menu dan Desktop. Seluruh data profil, ekstensi, dan sesi login Google disimpan dengan aman di `%LOCALAPPDATA%\AntiDetectBrowser\`.
+### Cara 1: Installer Resmi Windows (`AntiDetectBrowser-Setup-v1.1.0.exe` - Direkomendasikan)
+1. Buka halaman [**GitHub Releases**](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest) lalu unduh **`AntiDetectBrowser-Setup-v1.1.0.exe`** (serta ekstensi mandiri opsional **`anti-detect-browser.crx`**).
+2. Jalankan **`AntiDetectBrowser-Setup-v1.1.0.exe`** untuk memasang **Anti's Detect Browser** lengkap dengan pintasan Start Menu dan Desktop. Seluruh data profil, ekstensi, dan sesi login Google disimpan dengan aman di `%LOCALAPPDATA%\AntiDetectBrowser\`.
 3. Buka aplikasi dan klik **Continue with Google** pada layar login untuk masuk menggunakan akun Google Anda.
 
 ### Cara 2: Dobel-Klik File Peluncur (Dari Source Code)

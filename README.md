@@ -50,7 +50,7 @@ By combining Chrome DevTools Protocol (CDP) runtime emulation with a Manifest V3
 
 ## 2. Core Features
 
-- **Google OAuth 2.0 Sign-In & Local Data Storage**: Authenticate with your Google account via a local loopback callback (`127.0.0.1`), while all profile configurations and Chromium `UserData` directories stay on your local disk (`profiles/`).
+- **Google OAuth 2.0 Sign-In & Encrypted Cloud Sync**: Authenticate with your Google account via a local loopback callback (`127.0.0.1`). Profiles, cookies, proxies, and extensions are stored safely per account (`%LOCALAPPDATA%\AntiDetectBrowser\accounts\<hash>\`) across logout and synced across devices with client-side AES-256-GCM encryption via Google Drive `appDataFolder`.
 - **Deterministic Identity Derivation**: Powered by a 64-bit `identity_seed` and Mulberry32 PRNG (`stealth_browser/fingerprint.py`). Every profile reproduces the exact same hardware fingerprint across sessions while remaining distinct from other profiles.
 - **5-Vector Fingerprint Spoofing**:
   - **Canvas**: Seeded sub-pixel deterministic perturbation on `toDataURL`, `toBlob`, and `getImageData` without visual distortion.
@@ -84,9 +84,9 @@ pip install pywebview playwright
 
 ## 4. Quick Start (Desktop UI)
 
-### Option 1: Official Windows Installer (`AntiDetectBrowser-Setup-v1.0.0.exe` - Recommended)
-1. Go to the [**GitHub Releases**](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest) page and download **`AntiDetectBrowser-Setup-v1.0.0.exe`** (and optional standalone extension **`anti-detect-browser.crx`**).
-2. Run **`AntiDetectBrowser-Setup-v1.0.0.exe`** to install **Anti's Detect Browser** with a Start Menu entry and optional Desktop shortcut. All profiles, extensions, and Google sign-in sessions are stored safely in `%LOCALAPPDATA%\AntiDetectBrowser\`.
+### Option 1: Official Windows Installer (`AntiDetectBrowser-Setup-v1.1.0.exe` - Recommended)
+1. Go to the [**GitHub Releases**](https://github.com/Juremenn/Anti-s-Detect-Browser/releases/latest) page and download **`AntiDetectBrowser-Setup-v1.1.0.exe`** (and optional standalone extension **`anti-detect-browser.crx`**).
+2. Run **`AntiDetectBrowser-Setup-v1.1.0.exe`** to install **Anti's Detect Browser** with a Start Menu entry and optional Desktop shortcut. All profiles, extensions, and Google sign-in sessions are stored safely in `%LOCALAPPDATA%\AntiDetectBrowser\`.
 3. Launch the app and click **Continue with Google** on the login gate to sign in with your Google account.
 
 ### Option 2: Double-Click Launcher (From Source)

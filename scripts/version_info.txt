@@ -3,8 +3,8 @@
 # Windows PE Version Info resource for Anti's Detect Browser (AntiDetectBrowser.exe)
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 0, 0, 0),
-    prodvers=(1, 0, 0, 0),
+    filevers=(1, 1, 0, 0),
+    prodvers=(1, 1, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -20,12 +20,12 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', 'Juremenn'),
             StringStruct('FileDescription', "Anti's Detect Browser"),
-            StringStruct('FileVersion', '1.0.0.0'),
+            StringStruct('FileVersion', '1.1.0.0'),
             StringStruct('InternalName', 'AntiDetectBrowser'),
             StringStruct('LegalCopyright', 'Copyright (c) 2026 Juremenn'),
             StringStruct('OriginalFilename', 'AntiDetectBrowser.exe'),
             StringStruct('ProductName', "Anti's Detect Browser"),
-            StringStruct('ProductVersion', '1.0.0.0')
+            StringStruct('ProductVersion', '1.1.0.0')
           ]
         )
       ]

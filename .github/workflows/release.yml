@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version tag (e.g. v1.0.0)"
+        description: "Release version tag (e.g. v1.1.0)"
         required: true
-        default: "v1.0.0"
+        default: "v1.1.0"
 
 permissions:
   contents: write
@@ -19,6 +19,8 @@ jobs:
     name: Build Windows Setup (.exe) & Extension (.crx)
     runs-on: windows-latest
     env:
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -83,6 +85,18 @@ jobs:
       - name: Build PyInstaller --onedir Desktop Application
         shell: pwsh
         run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:GOOGLE_CLIENT_ID)) {
+            $cid = $env:GOOGLE_CLIENT_ID.Trim()
+            $csec = if ($env:GOOGLE_CLIENT_SECRET) { $env:GOOGLE_CLIENT_SECRET.Trim() } else { "" }
+            @"
+"""Bundled official Google OAuth 2.0 Desktop client credentials."""
+
+import os
+
+OFFICIAL_GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "$cid")
+OFFICIAL_GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "$csec")
+"@ | Set-Content -Path "web_ui/oauth_config.py" -Encoding UTF8
+          }
           python scripts/build-desktop-exe.py
 
       - name: Check Authenticode Signing Configuration

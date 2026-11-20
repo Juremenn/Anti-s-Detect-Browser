@@ -151,7 +151,7 @@ def _resolve_release_oauth_credentials() -> tuple[str, str]:
     return cid, csec
 
 
-def build_release(version: str = "1.0.0"):
+def build_release(version: str = "1.1.0"):
     version_clean = version.lstrip("v").strip() or "1.0.0"
     dist_dir = REPO_ROOT / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
@@ -244,7 +244,7 @@ def build_release(version: str = "1.0.0"):
 
 def main():
     parser = argparse.ArgumentParser(description="Build official Windows installer and release artifacts")
-    parser.add_argument("--version", default="1.0.0", help="Release version string (default: 1.0.0)")
+    parser.add_argument("--version", default="1.1.0", help="Release version string (default: 1.1.0)")
     args = parser.parse_args()
     build_release(args.version)
 
