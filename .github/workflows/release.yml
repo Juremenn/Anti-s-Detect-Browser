@@ -62,7 +62,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
 
       - name: Install Python dependencies
         shell: pwsh
@@ -85,19 +84,7 @@ jobs:
       - name: Build PyInstaller --onedir Desktop Application
         shell: pwsh
         run: |
-          if (-not [string]::IsNullOrWhiteSpace($env:GOOGLE_CLIENT_ID)) {
-            $cid = $env:GOOGLE_CLIENT_ID.Trim()
-            $csec = if ($env:GOOGLE_CLIENT_SECRET) { $env:GOOGLE_CLIENT_SECRET.Trim() } else { "" }
-            @"
-"""Bundled official Google OAuth 2.0 Desktop client credentials."""
-
-import os
-
-OFFICIAL_GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "$cid")
-OFFICIAL_GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "$csec")
-"@ | Set-Content -Path "web_ui/oauth_config.py" -Encoding UTF8
-          }
-          python scripts/build-desktop-exe.py
+          python scripts/build-desktop-exe.py --inject-oauth
 
       - name: Check Authenticode Signing Configuration
         id: signing_check

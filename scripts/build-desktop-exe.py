@@ -124,13 +124,32 @@ def build_exe(rebuild_frontend: bool = False) -> Path:
     return exe_path
 
 
+def inject_oauth_from_env():
+    cid = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    csec = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+    if not cid:
+        return
+    oauth_cfg = REPO_ROOT / "web_ui" / "oauth_config.py"
+    oauth_cfg.write_text(
+        '"""Bundled official Google OAuth 2.0 Desktop client credentials."""\n\n'
+        "import os\n\n"
+        f'OFFICIAL_GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", {cid!r})\n'
+        f'OFFICIAL_GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", {csec!r})\n',
+        encoding="utf-8",
+    )
+    print("[*] Bundled official Google OAuth credentials into web_ui/oauth_config.py")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Build AntiDetectBrowser (--onedir)")
     parser.add_argument("--install-deps", action="store_true", help="Auto-install PyInstaller if missing")
     parser.add_argument("--rebuild-frontend", action="store_true", help="Force rebuild of React frontend")
+    parser.add_argument("--inject-oauth", action="store_true", help="Bake GOOGLE_CLIENT_ID/SECRET env vars into oauth_config.py")
     args = parser.parse_args()
 
     check_and_install_deps(args.install_deps)
+    if args.inject_oauth:
+        inject_oauth_from_env()
     build_exe(rebuild_frontend=args.rebuild_frontend)
 
 
