@@ -32,15 +32,30 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from stealth_browser.consistency import evaluate as evaluate_consistency
 from stealth_browser.fingerprint import resolve_overrides
 from stealth_browser.launcher import StealthLauncher, discover_available_browsers
-from stealth_browser.profile_manager import HARDWARE_PRESETS, ProfileError, ProfileManager
+from stealth_browser.profile_manager import (
+    HARDWARE_PRESETS,
+    ProfileError,
+    ProfileManager,
+    account_hash_for_sub,
+    get_account_dir,
+    get_app_data_dir,
+)
 from stealth_browser import proxy_utils
+from web_ui.cloud_sync import (
+    CloudSyncManager,
+    DRIVE_SCOPE,
+    verify_access_token_has_drive_scope,
+)
+from web_ui.oauth_config import (
+    OFFICIAL_GOOGLE_CLIENT_ID,
+    OFFICIAL_GOOGLE_CLIENT_SECRET,
+)
 
 PORT = 58888
 BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+APP_DATA_ROOT = get_app_data_dir()
 if getattr(sys, "frozen", False):
-    _local_appdata = os.environ.get("LOCALAPPDATA")
-    ROOT = (Path(_local_appdata) if _local_appdata else (Path.home() / "AppData" / "Local")) / "AntiDetectBrowser"
-    ROOT.mkdir(parents=True, exist_ok=True)
+    ROOT = APP_DATA_ROOT
 else:
     ROOT = Path(__file__).resolve().parent
 WEB_DIR = BUNDLE_ROOT / "web_ui"
@@ -56,19 +71,17 @@ GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo"
 GOOGLE_REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke"
+GOOGLE_OAUTH_SCOPES = f"openid email profile {DRIVE_SCOPE}"
 GOOGLE_CLIENT_ID_RE = re.compile(r"^[a-zA-Z0-9._-]+\.apps\.googleusercontent\.com$")
 OAUTH_STATE_TTL_SECONDS = 600
-
-# Built-in Google Desktop App OAuth 2.0 Client (RFC 8252 public installed application credentials)
-DEFAULT_GOOGLE_CLIENT_ID = "764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com"
-DEFAULT_GOOGLE_CLIENT_SECRET = "d-FL95Q19q7MQmFpd7hHD0Ty"
+_PLACEHOLDER_OAUTH_VALUES = {"PASTE_YOUR_CLIENT_ID_HERE", "PASTE_YOUR_CLIENT_SECRET_HERE"}
 
 DEFAULT_SETTINGS = {
     "browser_path": "",
     "start_url": "https://browserleaks.com/canvas",
     "mask_webrtc": True,
-    "google_client_id": DEFAULT_GOOGLE_CLIENT_ID,
-    "google_client_secret": DEFAULT_GOOGLE_CLIENT_SECRET,
+    "google_client_id": "",
+    "google_client_secret": "",
 }
 ALLOWED_ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 
@@ -159,23 +172,25 @@ def _load_dotenv_file() -> Dict[str, str]:
     return values
 
 
+def _clean_oauth_value(val: Optional[str]) -> str:
+    clean = str(val or "").strip()
+    if not clean or clean in _PLACEHOLDER_OAUTH_VALUES:
+        return ""
+    return clean
+
+
 def load_settings() -> dict:
-    dotenv_vals = _load_dotenv_file()
     s = dict(DEFAULT_SETTINGS)
-    if dotenv_vals.get("GOOGLE_CLIENT_ID"):
-        s["google_client_id"] = dotenv_vals["GOOGLE_CLIENT_ID"]
-    if dotenv_vals.get("GOOGLE_CLIENT_SECRET"):
-        s["google_client_secret"] = dotenv_vals["GOOGLE_CLIENT_SECRET"]
-    if os.environ.get("GOOGLE_CLIENT_ID"):
-        s["google_client_id"] = os.environ["GOOGLE_CLIENT_ID"].strip()
-    if os.environ.get("GOOGLE_CLIENT_SECRET"):
-        s["google_client_secret"] = os.environ["GOOGLE_CLIENT_SECRET"].strip()
     try:
         if SETTINGS_FILE.exists():
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 stored = json.load(f)
             for k, v in stored.items():
-                if k in DEFAULT_SETTINGS and v not in (None, ""):
+                if k in ("google_client_id", "google_client_secret"):
+                    cleaned = _clean_oauth_value(v)
+                    if cleaned:
+                        s[k] = cleaned
+                elif k in DEFAULT_SETTINGS and v not in (None, ""):
                     s[k] = v
                 elif k in ("browser_path", "start_url", "mask_webrtc") and k in stored:
                     s[k] = v
@@ -190,26 +205,25 @@ def save_settings(settings_data: dict):
 
 
 def is_valid_google_client_id(client_id: str) -> bool:
-    if not client_id or not isinstance(client_id, str):
+    clean = _clean_oauth_value(client_id)
+    if not clean:
         return False
-    return bool(GOOGLE_CLIENT_ID_RE.match(client_id.strip()))
+    return bool(GOOGLE_CLIENT_ID_RE.match(clean))
 
 
 def get_google_oauth_config() -> Tuple[str, str]:
     dotenv_vals = _load_dotenv_file()
-    client_id = (
-        str(settings.get("google_client_id") or "").strip()
-        or os.environ.get("GOOGLE_CLIENT_ID", "").strip()
-        or dotenv_vals.get("GOOGLE_CLIENT_ID", "").strip()
-        or DEFAULT_GOOGLE_CLIENT_ID
-    )
-    client_secret = (
-        str(settings.get("google_client_secret") or "").strip()
-        or os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
-        or dotenv_vals.get("GOOGLE_CLIENT_SECRET", "").strip()
-    )
-    if client_id == DEFAULT_GOOGLE_CLIENT_ID and not client_secret:
-        client_secret = DEFAULT_GOOGLE_CLIENT_SECRET
+    official_id = _clean_oauth_value(OFFICIAL_GOOGLE_CLIENT_ID)
+    official_secret = _clean_oauth_value(OFFICIAL_GOOGLE_CLIENT_SECRET)
+
+    override_id = _clean_oauth_value(settings.get("google_client_id"))
+    env_id = _clean_oauth_value(os.environ.get("GOOGLE_CLIENT_ID")) or _clean_oauth_value(dotenv_vals.get("GOOGLE_CLIENT_ID"))
+    client_id = override_id or env_id or official_id
+
+    override_secret = _clean_oauth_value(settings.get("google_client_secret"))
+    env_secret = _clean_oauth_value(os.environ.get("GOOGLE_CLIENT_SECRET")) or _clean_oauth_value(dotenv_vals.get("GOOGLE_CLIENT_SECRET"))
+    client_secret = override_secret or env_secret or (official_secret if client_id == official_id else "")
+
     return client_id, client_secret
 
 
@@ -224,32 +238,37 @@ def register_window_focus_callback(cb: Callable[[], None]):
         _window_focus_callbacks.append(cb)
 
 
-def focus_desktop_window():
+def focus_desktop_window() -> bool:
     """Restore and bring the native pywebview desktop window to the foreground after OAuth callback."""
+    focused = False
     for cb in list(_window_focus_callbacks):
         try:
             cb()
+            focused = True
         except Exception:
             pass
     if sys.platform != "win32":
-        return
+        return focused
     try:
         user32 = ctypes.windll.user32
         hwnd = user32.FindWindowW(None, "Anti's Detect Browser")
         if not hwnd:
-            return
+            return focused
         SW_RESTORE = 9
         HWND_TOPMOST = -1
         HWND_NOTOPMOST = -2
         SWP_NOSIZE = 0x0001
         SWP_NOMOVE = 0x0002
         SWP_SHOWWINDOW = 0x0040
-        user32.ShowWindow(hwnd, SW_RESTORE)
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, SW_RESTORE)
         user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
         user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
         user32.SetForegroundWindow(hwnd)
+        focused = True
     except Exception:
         pass
+    return focused
 
 
 def _decode_jwt_payload(jwt_token: str) -> dict:
@@ -297,6 +316,15 @@ def clear_auth_session():
         pass
 
 
+def _session_has_drive_scope(session: Optional[dict]) -> bool:
+    if not session:
+        return False
+    scope_str = str(session.get("scope") or "").strip()
+    if not scope_str:
+        return False
+    return DRIVE_SCOPE in scope_str.split()
+
+
 def _refresh_google_token(session: dict) -> Optional[dict]:
     """Use stored refresh_token to obtain a fresh access_token when expired."""
     refresh_token = str(session.get("refresh_token") or "").strip()
@@ -330,6 +358,8 @@ def _refresh_google_token(session: dict) -> Optional[dict]:
         session["expires_at"] = int(time.time() + expires_in)
         if token_data.get("refresh_token"):
             session["refresh_token"] = token_data["refresh_token"]
+        if token_data.get("scope"):
+            session["scope"] = str(token_data["scope"]).strip()
         if token_data.get("id_token"):
             claims = _decode_jwt_payload(token_data["id_token"])
             if claims.get("name"):
@@ -348,6 +378,249 @@ def _refresh_google_token(session: dict) -> Optional[dict]:
         return session
 
 
+account_lock = threading.RLock()
+_active_account_sub: Optional[str] = None
+_active_account_dir: Optional[Path] = None
+_cloud_sync: Optional[CloudSyncManager] = None
+
+
+def _get_valid_drive_access_token(force_refresh: bool = False) -> Optional[str]:
+    """Return a valid Google OAuth access token for the currently active account."""
+    with auth_lock:
+        session = load_auth_session()
+        if not session or session.get("sub") != _active_account_sub:
+            return None
+        if not _session_has_drive_scope(session):
+            return None
+        expires_at = float(session.get("expires_at") or 0)
+        if force_refresh or time.time() >= expires_at - 60:
+            if session.get("refresh_token"):
+                refreshed = _refresh_google_token(session)
+                if not refreshed:
+                    return None
+                session = refreshed
+            elif time.time() >= expires_at:
+                return None
+        return str(session.get("access_token") or "").strip() or None
+
+
+def migrate_legacy_data_to_account(
+    sub: str,
+    account_dir: Path,
+    base_data_dir: Optional[Path] = None,
+    legacy_roots: Optional[List[Path]] = None,
+) -> bool:
+    """Move unscoped legacy profiles, proxies, and extensions into the first logged-in account."""
+    accounts_root = (Path(base_data_dir) if base_data_dir is not None else APP_DATA_ROOT) / "accounts"
+    accounts_root.mkdir(parents=True, exist_ok=True)
+    marker_file = accounts_root / ".legacy_migrated.json"
+    if marker_file.is_file():
+        return False
+
+    if legacy_roots is None:
+        roots = [APP_DATA_ROOT]
+        if ROOT.resolve() != APP_DATA_ROOT.resolve():
+            roots.append(ROOT)
+    else:
+        roots = list(legacy_roots)
+
+    dest_profiles = account_dir / "profiles"
+    dest_trash = dest_profiles / ".trash"
+    dest_profiles.mkdir(parents=True, exist_ok=True)
+    dest_ext_dir = account_dir / "custom-extensions"
+    dest_ext_dir.mkdir(parents=True, exist_ok=True)
+
+    migrated_items: List[str] = []
+
+    for legacy_root in roots:
+        # 1. Legacy profiles + trash + templates
+        legacy_profiles = legacy_root / "profiles"
+        if legacy_profiles.is_dir():
+            for entry in list(legacy_profiles.iterdir()):
+                if entry.name == ".trash" and entry.is_dir():
+                    for t_entry in list(entry.iterdir()):
+                        if t_entry.is_dir() and (t_entry / "config.json").is_file():
+                            dest_trash.mkdir(parents=True, exist_ok=True)
+                            target_t = dest_trash / t_entry.name
+                            if not target_t.exists():
+                                shutil.move(str(t_entry), str(target_t))
+                                migrated_items.append(f"trash:{t_entry.name}")
+                elif entry.name == ".templates.json" and entry.is_file():
+                    try:
+                        old_tpls = json.loads(entry.read_text(encoding="utf-8"))
+                        if isinstance(old_tpls, list) and old_tpls:
+                            dest_tpl_file = dest_profiles / ".templates.json"
+                            cur_tpls = []
+                            if dest_tpl_file.is_file():
+                                cur_tpls = json.loads(dest_tpl_file.read_text(encoding="utf-8"))
+                                if not isinstance(cur_tpls, list):
+                                    cur_tpls = []
+                            existing_names = {t.get("name") for t in cur_tpls if isinstance(t, dict)}
+                            for tpl in old_tpls:
+                                if isinstance(tpl, dict) and tpl.get("name") not in existing_names:
+                                    cur_tpls.append(tpl)
+                            dest_tpl_file.write_text(json.dumps(cur_tpls, indent=2), encoding="utf-8")
+                            migrated_items.append("templates")
+                    except Exception:
+                        pass
+                elif not entry.name.startswith(".") and entry.is_dir() and (entry / "config.json").is_file():
+                    target_p = dest_profiles / entry.name
+                    if not target_p.exists():
+                        shutil.move(str(entry), str(target_p))
+                        try:
+                            cfg = json.loads((target_p / "config.json").read_text(encoding="utf-8"))
+                            cfg["user_data_dir"] = str((target_p / "UserData").resolve())
+                            cfg.setdefault("updated_at", int(time.time() * 1000))
+                            (target_p / "config.json").write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+                        except Exception:
+                            pass
+                        migrated_items.append(f"profile:{entry.name}")
+
+        # 2. Legacy proxies.json
+        legacy_proxies = legacy_root / "proxies.json"
+        if legacy_proxies.is_file():
+            try:
+                old_proxies = json.loads(legacy_proxies.read_text(encoding="utf-8"))
+                if isinstance(old_proxies, list) and old_proxies:
+                    dest_proxies_file = account_dir / "proxies.json"
+                    cur_proxies = []
+                    if dest_proxies_file.is_file():
+                        cur_proxies = json.loads(dest_proxies_file.read_text(encoding="utf-8"))
+                        if not isinstance(cur_proxies, list):
+                            cur_proxies = []
+                    seen_urls = {p.get("url") for p in cur_proxies if isinstance(p, dict) and p.get("url")}
+                    for prx in old_proxies:
+                        if isinstance(prx, dict) and prx.get("url") and prx["url"] not in seen_urls:
+                            cur_proxies.append(prx)
+                            seen_urls.add(prx["url"])
+                    dest_proxies_file.write_text(json.dumps(cur_proxies, indent=2), encoding="utf-8")
+                    legacy_proxies.unlink(missing_ok=True)
+                    migrated_items.append("proxies")
+            except Exception:
+                pass
+
+        # 3. Legacy custom extensions
+        legacy_ext_file = legacy_root / "data" / "custom_extensions.json"
+        legacy_ext_dir = legacy_root / "data" / "custom-extensions"
+        if legacy_ext_file.is_file():
+            try:
+                old_exts = json.loads(legacy_ext_file.read_text(encoding="utf-8"))
+                if isinstance(old_exts, list) and old_exts:
+                    dest_ext_file = account_dir / "custom_extensions.json"
+                    cur_exts = []
+                    if dest_ext_file.is_file():
+                        cur_exts = json.loads(dest_ext_file.read_text(encoding="utf-8"))
+                        if not isinstance(cur_exts, list):
+                            cur_exts = []
+                    seen_ids = {e.get("id") for e in cur_exts if isinstance(e, dict)}
+                    for ext in old_exts:
+                        if not isinstance(ext, dict):
+                            continue
+                        ext_copy = dict(ext)
+                        old_path_str = str(ext_copy.get("path") or "")
+                        if old_path_str and legacy_ext_dir.is_dir():
+                            try:
+                                old_p = Path(old_path_str).resolve()
+                                if str(old_p).startswith(str(legacy_ext_dir.resolve())) and old_p.is_dir():
+                                    new_ext_sub = dest_ext_dir / old_p.name
+                                    if not new_ext_sub.exists():
+                                        shutil.move(str(old_p), str(new_ext_sub))
+                                    ext_copy["path"] = str(new_ext_sub.resolve())
+                            except Exception:
+                                pass
+                        if ext_copy.get("id") not in seen_ids:
+                            cur_exts.append(ext_copy)
+                            seen_ids.add(ext_copy.get("id"))
+                    dest_ext_file.write_text(json.dumps(cur_exts, indent=2), encoding="utf-8")
+                    legacy_ext_file.unlink(missing_ok=True)
+                    migrated_items.append("custom_extensions")
+            except Exception:
+                pass
+
+    marker_payload = {
+        "migrated_to_sub_hash": account_hash_for_sub(sub),
+        "migrated_at": int(time.time()),
+        "items": migrated_items,
+    }
+    marker_file.write_text(json.dumps(marker_payload, indent=2), encoding="utf-8")
+    return True
+
+
+def _activate_account_workspace(session: dict, trigger_pull: bool = True):
+    """Bind storage paths, ProfileManager, StealthLauncher, and CloudSyncManager to session['sub']."""
+    global PROXIES_FILE, CUSTOM_EXTENSIONS_FILE, CUSTOM_EXTENSIONS_DIR
+    global _active_account_sub, _active_account_dir, _cloud_sync
+
+    sub = str(session.get("sub") or "").strip()
+    if not sub:
+        return
+
+    has_drive = _session_has_drive_scope(session)
+    with account_lock:
+        if _active_account_sub == sub and _cloud_sync is not None:
+            _cloud_sync.set_drive_authorized(has_drive)
+            if trigger_pull and has_drive:
+                threading.Thread(target=_cloud_sync.sync_now, daemon=True).start()
+            return
+
+        if _cloud_sync is not None:
+            _cloud_sync.stop()
+            _cloud_sync = None
+
+        acct_dir = get_account_dir(sub, APP_DATA_ROOT)
+        migrate_legacy_data_to_account(sub, acct_dir, base_data_dir=APP_DATA_ROOT)
+
+        _active_account_sub = sub
+        _active_account_dir = acct_dir
+        PROXIES_FILE = acct_dir / "proxies.json"
+        CUSTOM_EXTENSIONS_FILE = acct_dir / "custom_extensions.json"
+        CUSTOM_EXTENSIONS_DIR = acct_dir / "custom-extensions"
+
+        profiles_dir = acct_dir / "profiles"
+        profile_mgr.set_profiles_dir(profiles_dir)
+        launcher.set_account_paths(profiles_dir=profiles_dir, custom_extensions_file=CUSTOM_EXTENSIONS_FILE)
+
+        sync_mgr = CloudSyncManager(
+            google_sub=sub,
+            account_dir=acct_dir,
+            proxies_file=PROXIES_FILE,
+            token_provider=_get_valid_drive_access_token,
+            is_profile_running_fn=running,
+            drive_authorized=has_drive,
+        )
+        _cloud_sync = sync_mgr
+
+    if trigger_pull and has_drive:
+        def _verify_and_pull():
+            tok = _get_valid_drive_access_token(False)
+            if tok:
+                verified = verify_access_token_has_drive_scope(tok)
+                if verified is False:
+                    sync_mgr.set_drive_authorized(False)
+                    return
+            sync_mgr.sync_pull()
+
+        threading.Thread(target=_verify_and_pull, daemon=True).start()
+
+
+def _detach_account_workspace():
+    """Stop cloud sync worker and clear active in-memory account bindings on Sign Out."""
+    global PROXIES_FILE, CUSTOM_EXTENSIONS_FILE, CUSTOM_EXTENSIONS_DIR
+    global _active_account_sub, _active_account_dir, _cloud_sync
+
+    with account_lock:
+        if _cloud_sync is not None:
+            _cloud_sync.stop()
+            _cloud_sync = None
+        _active_account_sub = None
+        _active_account_dir = None
+        PROXIES_FILE = ROOT / "proxies.json"
+        CUSTOM_EXTENSIONS_FILE = ROOT / "data" / "custom_extensions.json"
+        CUSTOM_EXTENSIONS_DIR = ROOT / "data" / "custom-extensions"
+        profile_mgr.set_profiles_dir(ROOT / "profiles")
+        launcher.set_account_paths(profiles_dir=ROOT / "profiles", custom_extensions_file=CUSTOM_EXTENSIONS_FILE)
+
+
 def get_authenticated_user() -> Optional[dict]:
     """Return verified session user dict, refreshing token automatically if expired."""
     with auth_lock:
@@ -364,12 +637,13 @@ def get_authenticated_user() -> Optional[dict]:
             elif now >= expires_at:
                 clear_auth_session()
                 return None
-        return {
-            "sub": str(session.get("sub") or ""),
-            "name": str(session.get("name") or session.get("email") or ""),
-            "email": str(session.get("email") or ""),
-            "picture": str(session.get("picture") or ""),
-        }
+    _activate_account_workspace(session, trigger_pull=True)
+    return {
+        "sub": str(session.get("sub") or ""),
+        "name": str(session.get("name") or session.get("email") or ""),
+        "email": str(session.get("email") or ""),
+        "picture": str(session.get("picture") or ""),
+    }
 
 
 def load_proxies() -> List[dict]:
@@ -442,10 +716,16 @@ def kill_tree(proc: subprocess.Popen):
     if proc.poll() is not None:
         return
     if os.name == "nt":
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 0  # SW_HIDE
         subprocess.run(
             ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
+            startupinfo=si,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
         )
     else:
         proc.terminate()
@@ -460,11 +740,30 @@ def running(name: str) -> bool:
     return bool(proc and proc.poll() is None)
 
 
+def _handle_profile_exited(name: str):
+    """Run post-close cleanup, update timestamps, and notify cloud sync when a browser exits."""
+    time.sleep(0.3)
+    prof = None
+    try:
+        prof = profile_mgr.get_profile(name, create_if_missing=False)
+        _apply_on_close(prof)
+        prof = profile_mgr.touch_profile(name, last_used=True) or prof
+    except (ProfileError, OSError):
+        pass
+    sync_mgr = _cloud_sync
+    if sync_mgr is not None:
+        sync_mgr.on_profile_stopped(name, (prof or {}).get("uuid"))
+
+
 def prune_processes():
+    exited: List[str] = []
     with proc_lock:
         for name in [n for n, p in active_processes.items() if p.poll() is not None]:
             del active_processes[name]
             active_overrides.pop(name, None)
+            exited.append(name)
+    for name in exited:
+        threading.Thread(target=_handle_profile_exited, args=(name,), daemon=True).start()
 
 
 def stop_profile(name: str) -> bool:
@@ -474,13 +773,29 @@ def stop_profile(name: str) -> bool:
     if proc and proc.poll() is None:
         kill_tree(proc)
         # Give Chrome a beat to release file locks before touching UserData.
-        time.sleep(0.3)
-        try:
-            _apply_on_close(profile_mgr.get_profile(name, create_if_missing=False))
-        except (ProfileError, OSError):
-            pass
+        _handle_profile_exited(name)
         return True
     return False
+
+
+_watcher_started = False
+
+
+def _start_process_watcher():
+    global _watcher_started
+    if _watcher_started:
+        return
+    _watcher_started = True
+
+    def _watch_loop():
+        while True:
+            time.sleep(2.0)
+            try:
+                prune_processes()
+            except Exception:
+                pass
+
+    threading.Thread(target=_watch_loop, daemon=True).start()
 
 
 _CACHE_DIR_NAMES = (
@@ -606,6 +921,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/extensions/health_check": self._health_check_extensions,
             "/api/extensions/config": self._get_extension_config,
             "/api/profiles/detail": self._profile_detail,
+            "/api/sync/status": self._get_sync_status,
             "/api/geoip/status": lambda: self._send_json({
                 "db": (proxy_utils.find_mmdb().name if proxy_utils.find_mmdb() else None)}),
         }
@@ -647,6 +963,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/auth/config": self._auth_config,
             "/api/auth/google/start": self._auth_google_start,
             "/api/auth/google/cancel": self._auth_google_cancel,
+            "/api/auth/focus": self._auth_focus,
             "/api/auth/logout": self._auth_logout,
         }
         if path in auth_routes:
@@ -683,6 +1000,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/extensions/remove": self._remove_extension,
             "/api/extensions/open_folder": self._open_extension_folder,
             "/api/profiles/validate": self._validate_profile,
+            "/api/sync/now": self._sync_now,
         }
         handler = routes.get(path)
         if not handler:
@@ -775,12 +1093,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
-            "scope": "openid email profile",
+            "scope": GOOGLE_OAUTH_SCOPES,
             "state": state,
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
             "access_type": "offline",
-            "prompt": "select_account",
+            "prompt": "select_account consent",
         }
         auth_url = f"{GOOGLE_AUTH_ENDPOINT}?{urlencode(params)}"
 
@@ -803,32 +1121,48 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             _last_auth_error = None
         self._send_json({"status": "canceled"})
 
-    def _render_oauth_callback_html(self, success: bool, title: str, message: str) -> str:
+    def _auth_focus(self, _data: dict):
+        focused = focus_desktop_window()
+        self._send_json({"focused": bool(focused)})
+
+    def _render_oauth_callback_html(
+        self,
+        success: bool,
+        title: str,
+        message: str,
+        account_email: str = "",
+    ) -> str:
         safe_title = html.escape(title)
         safe_message = html.escape(message)
-        status_color = "#15803D" if success else "#DC2626"
-        status_bg = "#F0FDF4" if success else "#FEF2F2"
-        status_border = "#BBF7D0" if success else "#FECACA"
-        auto_close_script = (
-            """
-            <script>
-              setTimeout(function() {
-                try {
-                  window.open('', '_self', '');
-                  window.close();
-                } catch (e) {}
-              }, 350);
-            </script>
-            """
+        safe_email = html.escape(account_email.strip()) if account_email else ""
+        if success and safe_email:
+            body_html = (
+                f'Signed in as <strong class="account">{safe_email}</strong>. '
+                "Return to Anti's Detect Browser to continue."
+            )
+        else:
+            body_html = safe_message
+
+        status_icon_bg = "#F0FDF4" if success else "#FEF2F2"
+        status_icon_border = "#BBF7D0" if success else "#FECACA"
+        status_icon_color = "#15803D" if success else "#B91C1C"
+        status_icon_svg = (
+            '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">'
+            '<path d="M4.5 10.5L8.2 14.2L15.5 6.5" stroke="currentColor" stroke-width="2.2" '
+            'stroke-linecap="round" stroke-linejoin="round"/></svg>'
             if success
-            else ""
+            else '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">'
+            '<path d="M10 6.2V10.6M10 13.8H10.01" stroke="currentColor" stroke-width="2.2" '
+            'stroke-linecap="round"/><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/></svg>'
         )
+        auto_close_js = "true" if success else "false"
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{safe_title} - Anti's Detect Browser</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235B4FE9'/%3E%3Cpath d='M16 5.5L25 9.5V16.2C25 21.6 21.1 25.9 16 27.5C10.9 25.9 7 21.6 7 16.2V9.5L16 5.5Z' stroke='%23FFF' stroke-width='1.8' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E" />
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{
@@ -839,79 +1173,233 @@ class DashboardHandler(SimpleHTTPRequestHandler):
       background-color: #F8FAFC;
       color: #0F172A;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      padding: 24px;
+      padding: 20px 16px;
       -webkit-font-smoothing: antialiased;
+    }}
+    main {{
+      width: 100%;
+      max-width: 400px;
     }}
     .card {{
       width: 100%;
-      max-width: 380px;
       background: #FFFFFF;
-      border: 1px solid #E5E7EB;
+      border: 1px solid #DCE1EB;
       border-radius: 14px;
       box-shadow: 0 16px 36px -12px rgba(15, 23, 42, 0.08);
-      padding: 28px 24px;
-      text-align: center;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }}
+    .brand {{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #E5E7EB;
     }}
     .logo {{
-      width: 44px;
-      height: 44px;
-      margin: 0 auto 16px auto;
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
       display: block;
     }}
-    h1 {{
-      font-size: 16px;
+    .brand-name {{
+      font-size: 13px;
       font-weight: 600;
-      color: #0F172A;
-      margin-bottom: 8px;
-      letter-spacing: -0.015em;
-    }}
-    p {{
-      font-size: 13px;
-      line-height: 1.5;
       color: #475569;
-      margin-bottom: 18px;
+      letter-spacing: -0.01em;
     }}
-    .badge {{
-      display: inline-block;
-      padding: 6px 12px;
-      font-size: 12px;
-      font-weight: 500;
-      color: {status_color};
-      background: {status_bg};
-      border: 1px solid {status_border};
-      border-radius: 8px;
-      margin-bottom: 16px;
+    .status-block {{
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 10px;
     }}
-    button {{
-      width: 100%;
-      height: 40px;
-      border-radius: 8px;
-      border: 1px solid #CBD5E1;
-      background: #FFFFFF;
+    .status-icon {{
+      width: 36px;
+      height: 36px;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: {status_icon_color};
+      background-color: {status_icon_bg};
+      border: 1px solid {status_icon_border};
+    }}
+    h1 {{
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.3;
       color: #0F172A;
-      font-size: 13px;
+      letter-spacing: -0.02em;
+    }}
+    .message {{
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: #475569;
+      overflow-wrap: anywhere;
+    }}
+    .account {{
+      color: #0F172A;
+      font-weight: 600;
+    }}
+    .actions {{
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }}
+    button.btn-primary {{
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: 1px solid #4B3FD8;
+      background-color: #5B4FE9;
+      color: #FFFFFF;
+      font-family: inherit;
+      font-size: 13.5px;
       font-weight: 500;
       cursor: pointer;
+      transition: background-color 140ms ease-out, transform 80ms ease-out;
     }}
-    button:hover {{
-      background: #F8FAFC;
+    button.btn-primary:hover:not(:disabled) {{
+      background-color: #4B3FD8;
+    }}
+    button.btn-primary:active:not(:disabled) {{
+      background-color: #4338CA;
+      transform: translateY(1px);
+    }}
+    button.btn-primary:focus-visible {{
+      outline: 2px solid #5B4FE9;
+      outline-offset: 2px;
+    }}
+    button.btn-primary:disabled {{
+      opacity: 0.7;
+      cursor: not-allowed;
+    }}
+    .hint {{
+      font-size: 12px;
+      line-height: 1.5;
+      color: #475569;
+      text-align: center;
+    }}
+    .hint-ok {{
+      color: #15803D;
+      font-weight: 500;
+    }}
+    .hint-err {{
+      color: #B91C1C;
+    }}
+    kbd {{
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid #CBD5E1;
+      background-color: #F8FAFC;
+      color: #0F172A;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.4;
+    }}
+    @media (prefers-reduced-motion: reduce) {{
+      button.btn-primary {{
+        transition: none;
+      }}
+      button.btn-primary:active:not(:disabled) {{
+        transform: none;
+      }}
     }}
   </style>
 </head>
 <body>
-  <main class="card">
-    <svg class="logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="32" height="32" rx="8" fill="#5B4FE9" />
-      <path d="M16 5.5L25 9.5V16.2C25 21.6 21.1 25.9 16 27.5C10.9 25.9 7 21.6 7 16.2V9.5L16 5.5Z" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round" fill="rgba(255,255,255,0.12)" />
-      <path d="M16 10.5L11.5 21.5M16 10.5L20.5 21.5M13.2 17.8H18.8" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" />
-      <circle cx="16" cy="14.2" r="1.4" fill="#A5F3FC" />
-    </svg>
-    <div class="badge">{safe_title}</div>
-    <h1>Anti's Detect Browser</h1>
-    <p>{safe_message}</p>
-    <button type="button" onclick="window.close()">Close Tab</button>
+  <main>
+    <section class="card" aria-labelledby="callback-heading">
+      <header class="brand">
+        <svg class="logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="#5B4FE9" />
+          <path d="M16 5.5L25 9.5V16.2C25 21.6 21.1 25.9 16 27.5C10.9 25.9 7 21.6 7 16.2V9.5L16 5.5Z" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round" fill="rgba(255,255,255,0.12)" />
+          <path d="M16 10.5L11.5 21.5M16 10.5L20.5 21.5M13.2 17.8H18.8" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx="16" cy="14.2" r="1.4" fill="#A5F3FC" />
+        </svg>
+        <span class="brand-name">Anti's Detect Browser</span>
+      </header>
+
+      <div class="status-block">
+        <span class="status-icon" aria-hidden="true">{status_icon_svg}</span>
+        <h1 id="callback-heading">{safe_title}</h1>
+        <p class="message">{body_html}</p>
+      </div>
+
+      <div class="actions">
+        <button type="button" id="return-btn" class="btn-primary">Return to Anti's Detect Browser</button>
+        <p id="action-status" class="hint" role="status" aria-live="polite">Close this browser tab anytime with <kbd id="close-mod">Ctrl</kbd> + <kbd>W</kbd>.</p>
+      </div>
+    </section>
   </main>
-  {auto_close_script}
+  <script>
+    (function() {{
+      var isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || '');
+      var modEl = document.getElementById('close-mod');
+      if (modEl && isMac) modEl.textContent = 'Cmd';
+      var shortcutText = isMac ? 'Cmd + W' : 'Ctrl + W';
+
+      var canScriptClose = Boolean(window.opener);
+      var autoClose = {auto_close_js};
+      if (autoClose && canScriptClose) {{
+        setTimeout(function() {{
+          try {{ window.close(); }} catch (e) {{}}
+        }}, 250);
+      }}
+
+      var btn = document.getElementById('return-btn');
+      var statusEl = document.getElementById('action-status');
+      if (!btn || !statusEl) return;
+
+      btn.addEventListener('click', function() {{
+        if (window.opener) {{
+          try {{
+            window.close();
+            return;
+          }} catch (e) {{}}
+        }}
+
+        btn.disabled = true;
+        btn.textContent = "Switching to Anti's Detect Browser...";
+        statusEl.className = 'hint';
+        statusEl.textContent = 'Bringing the app window to the front...';
+
+        fetch('/api/auth/focus', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: '{{}}'
+        }})
+          .then(function(res) {{
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+          }})
+          .then(function(data) {{
+            if (data && data.focused) {{
+              btn.disabled = false;
+              btn.textContent = "Return to Anti's Detect Browser";
+              statusEl.className = 'hint hint-ok';
+              statusEl.textContent = 'App window focused. Press ' + shortcutText + ' to close this browser tab.';
+            }} else {{
+              window.location.replace('/');
+            }}
+          }})
+          .catch(function() {{
+            btn.disabled = false;
+            btn.textContent = "Return to Anti's Detect Browser";
+            statusEl.className = 'hint hint-err';
+            statusEl.textContent = "Could not focus the app window automatically. Switch to Anti's Detect Browser and press " + shortcutText + ' to close this tab.';
+          }});
+      }});
+    }})();
+  </script>
 </body>
 </html>"""
 
@@ -1065,12 +1553,16 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             refresh_token = str(token_data.get("refresh_token") or "").strip()
             if not refresh_token and existing and existing.get("sub") == sub:
                 refresh_token = str(existing.get("refresh_token") or "").strip()
+            granted_scope = str(token_data.get("scope") or "").strip()
+            if not granted_scope and existing and existing.get("sub") == sub:
+                granted_scope = str(existing.get("scope") or "").strip()
             expires_in = int(token_data.get("expires_in") or 3600)
             session_obj = {
                 "sub": sub,
                 "email": email,
                 "name": name,
                 "picture": picture,
+                "scope": granted_scope,
                 "access_token": access_token,
                 "refresh_token": refresh_token,
                 "expires_at": int(time.time() + expires_in),
@@ -1079,6 +1571,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             save_auth_session(session_obj)
             pending_oauth_states.clear()
             _last_auth_error = None
+
+        _activate_account_workspace(session_obj, trigger_pull=True)
 
         def _delayed_focus():
             time.sleep(0.15)
@@ -1091,33 +1585,67 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 True,
                 "Authentication Complete",
                 "Authentication complete. You can close this tab and return to Anti's Detect Browser.",
+                account_email=email,
             ),
             status=200,
         )
 
     def _auth_logout(self, _data: dict):
         global _last_auth_error
+        # Best-effort background sync flush before clearing auth_session.json
+        sync_mgr = _cloud_sync
+        if sync_mgr is not None:
+            try:
+                sync_mgr.flush_before_logout(timeout=4.0)
+            except Exception:
+                pass
+
         with auth_lock:
             session = load_auth_session()
             clear_auth_session()
             pending_oauth_states.clear()
             _last_auth_error = None
 
+        _detach_account_workspace()
+
         if session:
             token_to_revoke = str(session.get("refresh_token") or session.get("access_token") or "").strip()
             if token_to_revoke:
-                try:
-                    rev_req = urllib.request.Request(
-                        f"{GOOGLE_REVOKE_ENDPOINT}?{urlencode({'token': token_to_revoke})}",
-                        data=b"",
-                        headers={"Content-Type": "application/x-www-form-urlencoded"},
-                        method="POST",
-                    )
-                    urllib.request.urlopen(rev_req, timeout=2).close()
-                except Exception:
-                    pass
+                def _revoke_async(tok: str):
+                    try:
+                        rev_req = urllib.request.Request(
+                            f"{GOOGLE_REVOKE_ENDPOINT}?{urlencode({'token': tok})}",
+                            data=b"",
+                            headers={"Content-Type": "application/x-www-form-urlencoded"},
+                            method="POST",
+                        )
+                        urllib.request.urlopen(rev_req, timeout=2).close()
+                    except Exception:
+                        pass
+
+                threading.Thread(target=_revoke_async, args=(token_to_revoke,), daemon=True).start()
 
         self._send_json({"status": "logged_out", "authenticated": False})
+
+    # --- cloud sync handlers ---------------------------------------------------
+
+    def _get_sync_status(self):
+        if _cloud_sync is None:
+            return self._send_json({
+                "state": "idle",
+                "last_synced_at": None,
+                "synced_profiles_count": 0,
+                "error_message": None,
+                "pending_changes": False,
+                "drive_authorized": False,
+            })
+        self._send_json(_cloud_sync.get_status())
+
+    def _sync_now(self, _data: dict):
+        if _cloud_sync is None:
+            raise ProfileError("Cloud sync is unavailable while signed out.")
+        result = _cloud_sync.sync_now()
+        self._send_json({"status": "ok", **result})
 
     # --- handlers --------------------------------------------------------------
 
@@ -1178,7 +1706,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "mask_webrtc": mask_webrtc,
         })
         save_settings(settings)
-        launcher.__init__(browser_path=browser_path or None)
+        launcher.__init__(
+            browser_path=browser_path or None,
+            profiles_dir=profile_mgr.profiles_dir,
+            custom_extensions_file=CUSTOM_EXTENSIONS_FILE,
+        )
         self._get_settings()
 
     def _start(self, data: dict):
@@ -1199,6 +1731,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             proc = launcher.launch(profile_name=name, target_url=data.get("url") or settings["start_url"],
                                    overrides=overrides)
             active_processes[name] = proc
+        _start_process_watcher()
         self._send_json({"status": "started", "pid": proc.pid, "consistency": consistency})
 
     def _stop(self, data: dict):
@@ -1223,6 +1756,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             fixed_ua = re.sub(r"Chrome/\d+\.", f"Chrome/{major}.", str(created["user_agent"]))
             if fixed_ua != created["user_agent"]:
                 created = profile_mgr.set_fingerprint(created["name"], {"user_agent": fixed_ua})
+        if _cloud_sync is not None:
+            _cloud_sync.schedule_push()
         self._send_json({"status": "created", "profile": created})
 
     def _refresh_fingerprint(self, data: dict):
@@ -1232,6 +1767,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             raise ProfileError("Hentikan profil yang sedang berjalan sebelum regenerate identitas.")
         keep_cookies = bool(data.get("keep_cookies", False))
         profile = profile_mgr.refresh_fingerprint(name, keep_cookies=keep_cookies)
+        if _cloud_sync is not None:
+            _cloud_sync.schedule_push()
         self._send_json({"status": "refreshed", "profile": profile})
 
     def _profile_detail(self):
@@ -1248,6 +1785,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if running(name):
             raise ProfileError("Hentikan profil yang sedang berjalan sebelum mengubah fingerprint.")
         profile = profile_mgr.set_fingerprint(name, data.get("fields") or {})
+        if _cloud_sync is not None:
+            _cloud_sync.schedule_push()
         self._send_json({"status": "updated", "profile": profile})
 
     def _update(self, data: dict):
@@ -1271,6 +1810,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 raise ProfileError("Hentikan profil yang sedang berjalan sebelum mengubah fingerprint.")
             profile_mgr.set_fingerprint(name, fp_fields)
         updated = profile_mgr.update_profile(name, fields)
+        if _cloud_sync is not None:
+            _cloud_sync.schedule_push()
         self._send_json({"status": "updated", "profile": updated})
 
     def _validate_profile(self, data: dict):
@@ -1290,7 +1831,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         for name in names:
             try:
                 stop_profile(name)
+                prof_uuid = ""
+                try:
+                    prof_uuid = str(profile_mgr.get_profile(name, create_if_missing=False).get("uuid") or "")
+                except Exception:
+                    pass
                 profile_mgr.trash_profile(name)
+                if _cloud_sync is not None and prof_uuid:
+                    _cloud_sync.record_profile_deleted(prof_uuid, name)
                 trashed.append(name)
             except (ProfileError, OSError) as e:
                 errors.append(f"{name}: {e}")
@@ -1326,10 +1874,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             except ProfileError as e:
                 label = item.get("name", "?") if isinstance(item, dict) else "?"
                 errors.append(f"{label}: {e}")
+        if imported and _cloud_sync is not None:
+            _cloud_sync.schedule_push()
         self._send_json({"status": "imported", "imported": imported, "errors": errors})
 
     def _restore(self, data: dict):
         restored = profile_mgr.restore_profile(data.get("trash_id"))
+        if _cloud_sync is not None and restored.get("uuid"):
+            _cloud_sync.record_profile_restored(str(restored["uuid"]))
         self._send_json({"status": "restored", "name": restored["name"]})
 
     def _purge(self, data: dict):
@@ -1359,6 +1911,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         }
         proxies.append(new_entry)
         save_proxies(proxies)
+        if _cloud_sync is not None:
+            _cloud_sync.record_proxies_updated()
         self._send_json({"status": "added", "proxy": new_entry})
 
     def _delete_proxy(self, data: dict):
@@ -1366,6 +1920,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         proxies = load_proxies()
         filtered = [p for p in proxies if p.get("id") != proxy_id]
         save_proxies(filtered)
+        if _cloud_sync is not None:
+            _cloud_sync.record_proxies_updated()
         self._send_json({"status": "deleted"})
 
     def _parse_proxies(self, data: dict):
@@ -1760,6 +2316,7 @@ def server_already_running(port: int) -> bool:
 
 
 def create_server(port: int = PORT) -> ThreadingHTTPServer:
+    _start_process_watcher()
     return ThreadingHTTPServer(("127.0.0.1", port), DashboardHandler)
 
 

@@ -13,6 +13,7 @@ import {
   ProfilesResponse,
   ProxyCheckResult,
   ProxyItem,
+  SyncStatusResponse,
   TemplateEntry,
   TrashItem,
 } from './types';
@@ -63,6 +64,21 @@ export const api = {
     }),
   logout: () =>
     request<{ status: string; authenticated: boolean }>('/api/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  // Cloud Sync (Google Drive appDataFolder)
+  getSyncStatus: () => request<SyncStatusResponse>('/api/sync/status'),
+  syncNow: () =>
+    request<{
+      status: string;
+      sync: SyncStatusResponse;
+      pulled: string[];
+      pushed: string[];
+      skipped_running?: string[];
+      proxies_updated?: boolean;
+    }>('/api/sync/now', {
       method: 'POST',
       body: JSON.stringify({}),
     }),

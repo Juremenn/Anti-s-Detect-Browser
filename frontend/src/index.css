@@ -161,6 +161,19 @@ html, body {
   }
 }
 
+@keyframes syncIconSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sync-icon-spinning {
+  animation: syncIconSpin 750ms linear infinite;
+}
+
 button, input, select, textarea, a {
   font-family: var(--font-sans);
   letter-spacing: -0.012em;

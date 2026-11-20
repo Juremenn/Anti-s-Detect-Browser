@@ -111,6 +111,46 @@ def sha256_digest(file_path: Path) -> str:
     return h.hexdigest()
 
 
+def _read_dotenv_oauth() -> dict:
+    env_file = REPO_ROOT / ".env"
+    vals = {}
+    if not env_file.is_file():
+        return vals
+    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET") and v:
+            vals[k] = v
+    return vals
+
+
+def _resolve_release_oauth_credentials() -> tuple[str, str]:
+    dotenv_vals = _read_dotenv_oauth()
+    sys.path.insert(0, str(REPO_ROOT))
+    from web_ui import oauth_config
+
+    placeholders = {"PASTE_YOUR_CLIENT_ID_HERE", "PASTE_YOUR_CLIENT_SECRET_HERE", ""}
+    cid = (
+        os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+        or dotenv_vals.get("GOOGLE_CLIENT_ID", "").strip()
+        or str(getattr(oauth_config, "OFFICIAL_GOOGLE_CLIENT_ID", "")).strip()
+    )
+    csec = (
+        os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+        or dotenv_vals.get("GOOGLE_CLIENT_SECRET", "").strip()
+        or str(getattr(oauth_config, "OFFICIAL_GOOGLE_CLIENT_SECRET", "")).strip()
+    )
+    if cid in placeholders:
+        cid = ""
+    if csec in placeholders:
+        csec = ""
+    return cid, csec
+
+
 def build_release(version: str = "1.0.0"):
     version_clean = version.lstrip("v").strip() or "1.0.0"
     dist_dir = REPO_ROOT / "dist"
@@ -141,10 +181,28 @@ def build_release(version: str = "1.0.0"):
 
     # Step 3: Build PyInstaller --onedir Desktop Application
     print("\n=== [3/5] Packaging Desktop Application (PyInstaller --onedir) ===")
-    subprocess.check_call(
-        [sys.executable, str(REPO_ROOT / "scripts" / "build-desktop-exe.py"), "--install-deps"],
-        cwd=str(REPO_ROOT),
-    )
+    oauth_cfg_path = REPO_ROOT / "web_ui" / "oauth_config.py"
+    original_oauth_cfg = oauth_cfg_path.read_text(encoding="utf-8") if oauth_cfg_path.is_file() else None
+    rel_cid, rel_csec = _resolve_release_oauth_credentials()
+    try:
+        if rel_cid:
+            print("[*] Bundling official Google OAuth credentials into release package...")
+            oauth_cfg_path.write_text(
+                '"""Bundled official Google OAuth 2.0 Desktop client credentials."""\n\n'
+                "import os\n\n"
+                f'OFFICIAL_GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", {rel_cid!r})\n'
+                f'OFFICIAL_GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", {rel_csec!r})\n',
+                encoding="utf-8",
+            )
+        else:
+            print("[!] Warning: GOOGLE_CLIENT_ID not found in .env or oauth_config.py; packaged app will have OAuth unconfigured.")
+        subprocess.check_call(
+            [sys.executable, str(REPO_ROOT / "scripts" / "build-desktop-exe.py"), "--install-deps"],
+            cwd=str(REPO_ROOT),
+        )
+    finally:
+        if original_oauth_cfg is not None:
+            oauth_cfg_path.write_text(original_oauth_cfg, encoding="utf-8")
     onedir_exe = dist_dir / "AntiDetectBrowser" / "AntiDetectBrowser.exe"
     if not onedir_exe.is_file():
         raise FileNotFoundError(f"PyInstaller --onedir binary missing: {onedir_exe}")

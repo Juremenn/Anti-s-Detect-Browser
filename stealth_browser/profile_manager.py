@@ -2,6 +2,7 @@
 profile_manager.py - Local browser profiles: config, isolated UserData, tags, folders, trash.
 """
 
+import hashlib
 import json
 import os
 import random
@@ -18,13 +19,35 @@ from urllib.parse import urlparse
 from .fingerprint import derive_identity
 
 
+def get_app_data_dir() -> Path:
+    """Return the canonical per-user application data directory (%LOCALAPPDATA%\\AntiDetectBrowser)."""
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    base = Path(local_appdata) if local_appdata else (Path.home() / "AppData" / "Local")
+    root = base / "AntiDetectBrowser"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def account_hash_for_sub(sub: str) -> str:
+    """Return a deterministic filesystem-safe 24-char hash for a Google account sub."""
+    clean = str(sub or "").strip()
+    if not clean:
+        raise ValueError("Google sub is required to derive account storage path.")
+    return hashlib.sha256(clean.encode("utf-8")).hexdigest()[:24]
+
+
+def get_account_dir(sub: str, base_dir: Optional[Path] = None) -> Path:
+    """Return and initialize the isolated storage directory for a Google account."""
+    root = Path(base_dir) if base_dir is not None else get_app_data_dir()
+    acct = root / "accounts" / account_hash_for_sub(sub)
+    (acct / "profiles").mkdir(parents=True, exist_ok=True)
+    (acct / "custom-extensions").mkdir(parents=True, exist_ok=True)
+    return acct
+
+
 def _get_user_data_root() -> Path:
     if getattr(sys, "frozen", False):
-        local_appdata = os.environ.get("LOCALAPPDATA")
-        base = Path(local_appdata) if local_appdata else (Path.home() / "AppData" / "Local")
-        root = base / "AntiDetectBrowser"
-        root.mkdir(parents=True, exist_ok=True)
-        return root
+        return get_app_data_dir()
     return Path(__file__).resolve().parent.parent
 
 
@@ -384,6 +407,9 @@ def _move_with_retry(src: Path, dst: Path, attempts: int = 10):
 
 class ProfileManager:
     def __init__(self, profiles_dir: Path = BASE_PROFILES_DIR):
+        self.set_profiles_dir(profiles_dir)
+
+    def set_profiles_dir(self, profiles_dir: Path):
         self.profiles_dir = Path(profiles_dir)
         self.trash_dir = self.profiles_dir / TRASH_DIRNAME
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
@@ -454,9 +480,11 @@ class ProfileManager:
         identity_seed = random.getrandbits(64)
         fingerprint = (derive_identity(preset, identity_seed)
                        if diversify and not overrides else {})
+        now_ms = int(time.time() * 1000)
         profile = {
             "uuid": str(uuid.uuid4()),
-            "created_at": str(int(time.time())),
+            "created_at": str(int(now_ms // 1000)),
+            "updated_at": now_ms,
             "user_data_dir": str(user_data_path),
             "mask_webrtc": True,
             "base_preset": preset_index,
@@ -504,12 +532,27 @@ class ProfileManager:
         cfg = _read_json(dst / "config.json")
         cfg["name"] = new_name
         cfg["user_data_dir"] = str(dst / "UserData")
+        cfg["updated_at"] = int(time.time() * 1000)
         _write_json(dst / "config.json", cfg)
         return self._with_paths(cfg, dst)
 
     def update_profile(self, name: str, fields: dict) -> dict:
         profile = self.get_profile(name, create_if_missing=False)
         profile.update(_clean_typed_fields(fields or {}))
+        profile["updated_at"] = int(time.time() * 1000)
+        _write_json(self._path(name) / "config.json", profile)
+        return profile
+
+    def touch_profile(self, name: str, last_used: bool = False) -> Optional[dict]:
+        """Bump updated_at (and optionally last_used_at) after a browser session closes."""
+        try:
+            profile = self.get_profile(name, create_if_missing=False)
+        except ProfileError:
+            return None
+        now_ms = int(time.time() * 1000)
+        profile["updated_at"] = now_ms
+        if last_used:
+            profile["last_used_at"] = int(now_ms // 1000)
         _write_json(self._path(name) / "config.json", profile)
         return profile
 
@@ -533,6 +576,7 @@ class ProfileManager:
         profile["identity_seed"] = seed
         profile["diversified"] = True
         profile["custom"] = False
+        profile["updated_at"] = int(time.time() * 1000)
         self._wipe_user_data(self._path(name) / "UserData", keep_cookies=keep_cookies)
         _write_json(self._path(name) / "config.json", profile)
         return profile
@@ -577,6 +621,7 @@ class ProfileManager:
         profile.update(overrides)
         profile["custom"] = True
         profile["diversified"] = False
+        profile["updated_at"] = int(time.time() * 1000)
         _write_json(self._path(name) / "config.json", profile)
         return profile
 
@@ -643,6 +688,7 @@ class ProfileManager:
         if self.exists(name):
             raise ProfileError(f"Profil '{name}' sudah ada. Hapus atau ganti nama profil itu dulu.")
         cfg.pop("trashed_at", None)
+        cfg["updated_at"] = int(time.time() * 1000)
         _write_json(src / "config.json", cfg)
         dst = self.profiles_dir / name
         _move_with_retry(src, dst)

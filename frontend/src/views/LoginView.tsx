@@ -187,7 +187,7 @@ export function LoginView({
                 lineHeight: 1.45,
               }}
             >
-              Sign in with your Google account to access your workspace.
+              Sign in with Google to sync your browser profiles across devices.
             </p>
           </div>
         </header>

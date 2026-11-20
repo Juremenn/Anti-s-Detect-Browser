@@ -113,6 +113,8 @@ export interface AppSettings {
   browser_path: string;
   start_url: string;
   mask_webrtc: boolean;
+  google_client_id?: string;
+  has_client_secret?: boolean;
   active_browser_path?: string;
   engine_version?: string;
   geoip_db?: string | null;
@@ -271,5 +273,16 @@ export interface AuthStartResponse {
   auth_url: string;
   state: string;
   redirect_uri?: string;
+}
+
+export type SyncState = 'idle' | 'syncing' | 'synced' | 'needs_reauth' | 'error' | 'offline';
+
+export interface SyncStatusResponse {
+  state: SyncState;
+  last_synced_at: number | null;
+  synced_profiles_count: number;
+  error_message: string | null;
+  pending_changes?: boolean;
+  drive_authorized?: boolean;
 }
 

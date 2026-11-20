@@ -15,6 +15,7 @@ import {
   Preset,
   Profile,
   ProxyItem,
+  SyncStatusResponse,
   TabId,
   ToastMessage,
   TrashItem,
@@ -53,6 +54,8 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState('all');
+  const [syncStatus, setSyncStatus] = useState<SyncStatusResponse | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Theme management (Dark / Light / System)
   const { themeMode, resolvedTheme, setThemeMode, toggleTheme } = useTheme();
@@ -167,6 +170,33 @@ function AppContent() {
     }
   }, []);
 
+  const loadSyncStatus = useCallback(async () => {
+    try {
+      const status = await api.getSyncStatus();
+      setSyncStatus((prev) => {
+        if (
+          prev &&
+          prev.state === 'syncing' &&
+          status.state === 'synced'
+        ) {
+          loadProfiles();
+          loadProxies();
+          loadTrash();
+        } else if (
+          prev &&
+          status.last_synced_at &&
+          prev.last_synced_at !== status.last_synced_at
+        ) {
+          loadProfiles();
+          loadProxies();
+        }
+        return status;
+      });
+    } catch (e) {
+      console.error('Failed to load sync status:', e);
+    }
+  }, [loadProfiles, loadProxies, loadTrash]);
+
   useEffect(() => {
     let cancelled = false;
     async function checkInitialAuth() {
@@ -206,7 +236,18 @@ function AppContent() {
     loadPresets();
     loadSettings();
     loadExtensionsCount();
-  }, [authenticated, loadProfiles, loadTrash, loadProxies, loadPresets, loadSettings, loadExtensionsCount]);
+    loadSyncStatus();
+  }, [authenticated, loadProfiles, loadTrash, loadProxies, loadPresets, loadSettings, loadExtensionsCount, loadSyncStatus]);
+
+  // Poll cloud sync status while authenticated
+  useEffect(() => {
+    if (!authenticated) return;
+    const intervalMs = syncStatus?.state === 'syncing' || isSyncing ? 1500 : 4000;
+    const syncTimer = setInterval(() => {
+      loadSyncStatus();
+    }, intervalMs);
+    return () => clearInterval(syncTimer);
+  }, [authenticated, syncStatus?.state, isSyncing, loadSyncStatus]);
 
   // Polling every 3s, paused when unauthenticated or when modal is open to ensure zero interaction lag
   useEffect(() => {
@@ -514,11 +555,72 @@ function AppContent() {
     }
   }
 
+  async function handleSyncNow() {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const res = await api.syncNow();
+      setSyncStatus(res.sync);
+      await Promise.all([loadProfiles(), loadProxies(), loadTrash()]);
+      const pulledCount = res.pulled?.length || 0;
+      const pushedCount = res.pushed?.length || 0;
+      if (res.sync.state === 'needs_reauth') {
+        addToast(
+          res.sync.error_message || 'Google Drive permission required. Click Reconnect Drive in the sidebar.',
+          'error',
+        );
+      } else if (res.sync.state === 'error' || res.sync.state === 'offline') {
+        addToast(res.sync.error_message || 'Cloud sync unavailable offline.', 'error');
+      } else if (pulledCount > 0 || pushedCount > 0) {
+        addToast(
+          `Cloud sync complete (${pulledCount} pulled, ${pushedCount} pushed).`,
+          'success',
+        );
+      } else {
+        addToast('All profiles are up to date.', 'success');
+      }
+    } catch (e: unknown) {
+      addToast(e instanceof Error ? e.message : String(e), 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  async function handleReconnectDrive() {
+    try {
+      await api.startGoogleAuth(true);
+      addToast('Complete Google Drive authorization in your browser.', 'info');
+      let attempts = 0;
+      const timer = window.setInterval(async () => {
+        attempts += 1;
+        try {
+          const st = await api.getSyncStatus();
+          setSyncStatus(st);
+          if (st.drive_authorized && st.state !== 'needs_reauth') {
+            window.clearInterval(timer);
+            await Promise.all([loadProfiles(), loadProxies(), loadTrash()]);
+            if (st.state === 'synced') {
+              addToast('Google Drive connected and synced.', 'success');
+            }
+            return;
+          }
+        } catch {
+          // Ignore transient polling errors while OAuth completes
+        }
+        if (attempts >= 50) {
+          window.clearInterval(timer);
+        }
+      }, 1200);
+    } catch (e: unknown) {
+      addToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   async function handleSignOut() {
     const confirmed = await confirm({
       title: 'Sign Out',
       description:
-        'Sign out of your Google account on this device? You will need to sign in with Google again to access your workspace.',
+        'Your profiles are saved locally and synced to your Google account. You can sign back in on this or any other device anytime.',
       confirmLabel: 'Sign Out',
       cancelLabel: 'Cancel',
       variant: 'danger',
@@ -533,6 +635,7 @@ function AppContent() {
 
     setAuthenticated(false);
     setAuthUser(null);
+    setSyncStatus(null);
     setProfiles([]);
     setTrashItems([]);
     setProxies([]);
@@ -596,6 +699,10 @@ function AppContent() {
         runningCount={runningCount}
         user={authUser}
         onSignOut={handleSignOut}
+        syncStatus={syncStatus}
+        isSyncing={isSyncing}
+        onSyncNow={handleSyncNow}
+        onReconnectDrive={handleReconnectDrive}
       />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: 'var(--bg-base)' }}>

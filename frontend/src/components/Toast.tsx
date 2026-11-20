@@ -17,7 +17,8 @@ export function ToastContainer({ toasts, onDismiss }: ToastProps) {
         right: 20,
         display: 'flex',
         flexDirection: 'column',
-        gap: 6,
+        alignItems: 'flex-end',
+        gap: 8,
         zIndex: 2000,
         pointerEvents: 'none',
       }}
@@ -29,34 +30,76 @@ export function ToastContainer({ toasts, onDismiss }: ToastProps) {
         return (
           <div
             key={t.id}
-            onClick={() => onDismiss(t.id)}
+            role={isError ? 'alert' : 'status'}
             style={{
               pointerEvents: 'auto',
-              padding: '8px 12px',
-              backgroundColor: 'var(--bg-raised)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-control)',
-              fontSize: 12,
+              width: 'calc(100vw - 32px)',
+              maxWidth: 380,
+              padding: '12px 14px',
+              backgroundColor: '#FFFFFF',
+              border: '1px solid #E5E7EB',
+              borderRadius: 10,
+              fontSize: 12.5,
               fontWeight: 500,
-              color: 'var(--text-primary)',
-              boxShadow: 'var(--shadow-popover)',
+              color: '#0F172A',
+              boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.12)',
               display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              cursor: 'pointer',
-              maxWidth: 360,
+              alignItems: 'flex-start',
+              gap: 10,
               animation: 'fadeIn 120ms ease-out',
             }}
           >
-            {isSuccess ? (
-              <CheckCircle2 size={14} strokeWidth={1.5} color="var(--status-running)" />
-            ) : isError ? (
-              <XCircle size={14} strokeWidth={1.5} color="var(--status-error)" />
-            ) : (
-              <Info size={14} strokeWidth={1.5} color="var(--accent)" />
-            )}
-            <span style={{ flex: 1, lineHeight: 1.3 }}>{t.message}</span>
-            <X size={12} strokeWidth={1.5} color="var(--text-tertiary)" style={{ flexShrink: 0 }} />
+            <span style={{ display: 'inline-flex', paddingTop: 2, flexShrink: 0 }} aria-hidden="true">
+              {isSuccess ? (
+                <CheckCircle2 size={15} strokeWidth={1.75} color="#15803D" />
+              ) : isError ? (
+                <XCircle size={15} strokeWidth={1.75} color="#DC2626" />
+              ) : (
+                <Info size={15} strokeWidth={1.75} color="#4F46E5" />
+              )}
+            </span>
+
+            <span
+              title={t.message}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                wordBreak: 'break-word',
+                fontSize: 12.5,
+                lineHeight: 1.45,
+                color: '#0F172A',
+              }}
+            >
+              {t.message}
+            </span>
+
+            <button
+              type="button"
+              onClick={() => onDismiss(t.id)}
+              aria-label="Dismiss notification"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 22,
+                height: 22,
+                padding: 0,
+                marginTop: -2,
+                marginRight: -4,
+                borderRadius: 6,
+                border: 'none',
+                backgroundColor: 'transparent',
+                color: '#64748B',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              <X size={13} strokeWidth={1.75} aria-hidden="true" />
+            </button>
           </div>
         );
       })}

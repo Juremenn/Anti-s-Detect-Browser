@@ -143,7 +143,18 @@ def cleanup_orphaned_webview(storage_path: Path):
         norm = str(storage_path).lower().replace("/", "\\")
         import subprocess
         cmd = f'Get-CimInstance Win32_Process -Filter "Name LIKE \'%webview%\'" | Where-Object {{ $_.CommandLine -like "*{norm}*" }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}'
-        subprocess.run(["powershell", "-NoProfile", "-Command", cmd], capture_output=True, text=True, timeout=3)
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 0  # SW_HIDE
+        subprocess.run(
+            ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", cmd],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=3,
+            startupinfo=si,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
+        )
     except Exception:
         pass
 

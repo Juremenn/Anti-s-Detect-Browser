@@ -89,8 +89,14 @@ def find_free_port() -> int:
 
 
 class StealthLauncher:
-    def __init__(self, browser_path: Optional[str] = None, profiles_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        browser_path: Optional[str] = None,
+        profiles_dir: Optional[Path] = None,
+        custom_extensions_file: Optional[Path] = None,
+    ):
         self.profile_mgr = ProfileManager(profiles_dir) if profiles_dir else ProfileManager()
+        self.custom_extensions_file: Optional[Path] = Path(custom_extensions_file) if custom_extensions_file else None
         if browser_path and os.path.exists(browser_path):
             self.chrome_path = browser_path
         else:
@@ -99,17 +105,30 @@ class StealthLauncher:
             except FileNotFoundError:
                 self.chrome_path = ""
 
+    def set_account_paths(
+        self,
+        profiles_dir: Optional[Path] = None,
+        custom_extensions_file: Optional[Path] = None,
+    ):
+        """Rebind the launcher to an authenticated account's profiles and extensions paths."""
+        if profiles_dir is not None:
+            self.profile_mgr = ProfileManager(profiles_dir)
+        self.custom_extensions_file = Path(custom_extensions_file) if custom_extensions_file else None
+
     def get_enabled_custom_extension_paths(self) -> List[str]:
         """
         Collect directories of enabled custom extensions that actually exist on disk.
         """
-        if getattr(sys, "frozen", False):
-            local_appdata = os.environ.get("LOCALAPPDATA")
-            base = Path(local_appdata) if local_appdata else (Path.home() / "AppData" / "Local")
-            app_root = base / "AntiDetectBrowser"
+        if self.custom_extensions_file is not None:
+            custom_ext_file = self.custom_extensions_file
         else:
-            app_root = Path(__file__).resolve().parent.parent
-        custom_ext_file = app_root / "data" / "custom_extensions.json"
+            if getattr(sys, "frozen", False):
+                local_appdata = os.environ.get("LOCALAPPDATA")
+                base = Path(local_appdata) if local_appdata else (Path.home() / "AppData" / "Local")
+                app_root = base / "AntiDetectBrowser"
+            else:
+                app_root = Path(__file__).resolve().parent.parent
+            custom_ext_file = app_root / "data" / "custom_extensions.json"
         valid_paths = []
         if custom_ext_file.is_file():
             try:

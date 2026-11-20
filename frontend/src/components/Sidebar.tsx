@@ -11,7 +11,7 @@ import {
   Users,
 } from 'lucide-react';
 import { t } from '../i18n';
-import { AuthUser, TabId } from '../types';
+import { AuthUser, SyncStatusResponse, TabId } from '../types';
 
 interface SidebarProps {
   activeTab: TabId;
@@ -24,6 +24,22 @@ interface SidebarProps {
   runningCount: number;
   user?: AuthUser | null;
   onSignOut?: () => void;
+  syncStatus?: SyncStatusResponse | null;
+  isSyncing?: boolean;
+  onSyncNow?: () => void;
+  onReconnectDrive?: () => void;
+}
+
+function formatSyncTimeLabel(timestampMs: number | null | undefined): string {
+  if (!timestampMs) return 'Just now';
+  const diffSec = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
+  if (diffSec < 60) return 'Just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  return `${diffDays}d ago`;
 }
 
 function getInitials(nameOrEmail: string): string {
@@ -47,6 +63,10 @@ export function Sidebar({
   runningCount,
   user,
   onSignOut,
+  syncStatus,
+  isSyncing = false,
+  onSyncNow,
+  onReconnectDrive,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem('anti_detect_sidebar_collapsed') === 'true';
@@ -319,125 +339,351 @@ export function Sidebar({
           flexDirection: 'column',
         }}
       >
-        {/* Authenticated Google Account Badge */}
+        {/* Authenticated Google Account Badge + Cloud Sync Status */}
         {user && (
           <div
             style={{
-              padding: collapsed ? '10px 6px' : '10px 12px',
               borderBottom: '1px solid var(--border)',
               display: 'flex',
-              flexDirection: collapsed ? 'column' : 'row',
-              alignItems: 'center',
-              justifyContent: collapsed ? 'center' : 'space-between',
-              gap: 8,
+              flexDirection: 'column',
             }}
           >
             <div
               style={{
+                padding: collapsed ? '10px 6px' : '10px 12px',
                 display: 'flex',
+                flexDirection: collapsed ? 'column' : 'row',
                 alignItems: 'center',
-                gap: 9,
-                minWidth: 0,
-                flex: collapsed ? 'none' : 1,
+                justifyContent: collapsed ? 'center' : 'space-between',
+                gap: 8,
               }}
-              title={`${user.name} (${user.email})`}
             >
-              {user.picture && !avatarFailed ? (
-                <img
-                  src={user.picture}
-                  alt={user.name || user.email}
-                  width={28}
-                  height={28}
-                  referrerPolicy="no-referrer"
-                  onError={() => setAvatarFailed(true)}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    border: '1px solid #E5E7EB',
-                    objectFit: 'cover',
-                    flexShrink: 0,
-                    backgroundColor: '#F8FAFC',
-                  }}
-                />
-              ) : (
-                <div
-                  aria-hidden="true"
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    border: '1px solid #CBD5E1',
-                    backgroundColor: '#F1F5F9',
-                    color: '#0F172A',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    letterSpacing: '-0.02em',
-                  }}
-                >
-                  {getInitials(user.name || user.email)}
-                </div>
-              )}
-
-              {!collapsed && (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    minWidth: 0,
-                    flex: 1,
-                    gap: 1,
-                  }}
-                >
-                  <div
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 9,
+                  minWidth: 0,
+                  flex: collapsed ? 'none' : 1,
+                }}
+                title={`${user.name} (${user.email})`}
+              >
+                {user.picture && !avatarFailed ? (
+                  <img
+                    src={user.picture}
+                    alt={user.name || user.email}
+                    width={28}
+                    height={28}
+                    referrerPolicy="no-referrer"
+                    onError={() => setAvatarFailed(true)}
                     style={{
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: 'var(--text-primary)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      lineHeight: 1.3,
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      border: '1px solid #E5E7EB',
+                      objectFit: 'cover',
+                      flexShrink: 0,
+                      backgroundColor: '#F8FAFC',
                     }}
-                  >
-                    {user.name || user.email}
-                  </div>
+                  />
+                ) : (
                   <div
+                    aria-hidden="true"
                     style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      border: '1px solid #CBD5E1',
+                      backgroundColor: '#F1F5F9',
+                      color: '#0F172A',
                       fontSize: 11,
-                      color: 'var(--text-tertiary)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      lineHeight: 1.25,
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      letterSpacing: '-0.02em',
                     }}
                   >
-                    {user.email}
+                    {getInitials(user.name || user.email)}
                   </div>
-                </div>
+                )}
+
+                {!collapsed && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      minWidth: 0,
+                      flex: 1,
+                      gap: 1,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: 'var(--text-primary)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {user.name || user.email}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--text-tertiary)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        lineHeight: 1.25,
+                      }}
+                    >
+                      {user.email}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {onSignOut && (
+                <button
+                  type="button"
+                  className="btn-icon danger"
+                  onClick={onSignOut}
+                  title="Sign out"
+                  aria-label="Sign out"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderColor: 'transparent',
+                  }}
+                >
+                  <LogOut size={14} strokeWidth={1.75} aria-hidden="true" />
+                </button>
               )}
             </div>
 
-            {onSignOut && (
-              <button
-                type="button"
-                className="btn-icon danger"
-                onClick={onSignOut}
-                title="Sign out"
-                aria-label="Sign out"
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderColor: 'transparent',
-                }}
-              >
-                <LogOut size={14} strokeWidth={1.75} aria-hidden="true" />
-              </button>
-            )}
+            {/* Subtle Cloud Sync Status Row */}
+            {(() => {
+              const rawState = isSyncing ? 'syncing' : syncStatus?.state || 'idle';
+              const activeSyncing = rawState === 'syncing';
+              const needsReauth = rawState === 'needs_reauth';
+              const dotColor =
+                rawState === 'synced'
+                  ? '#10B981'
+                  : activeSyncing
+                    ? '#4F46E5'
+                    : needsReauth
+                      ? '#D97706'
+                      : rawState === 'error'
+                        ? '#DC2626'
+                        : '#94A3B8';
+              const statusLabel = activeSyncing
+                ? 'Syncing...'
+                : rawState === 'synced'
+                  ? `Synced · ${formatSyncTimeLabel(syncStatus?.last_synced_at)}`
+                  : needsReauth
+                    ? 'Drive permission required'
+                    : rawState === 'offline'
+                      ? 'Offline'
+                      : rawState === 'error'
+                        ? 'Sync error'
+                        : 'Cloud Sync ready';
+              const tooltipText = syncStatus?.error_message
+                ? `${statusLabel}: ${syncStatus.error_message}`
+                : statusLabel;
+
+              if (collapsed) {
+                return (
+                  <div
+                    style={{
+                      padding: '4px 6px 8px 6px',
+                      display: 'flex',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      onClick={needsReauth && onReconnectDrive ? onReconnectDrive : onSyncNow}
+                      disabled={activeSyncing || (!onSyncNow && !onReconnectDrive)}
+                      title={tooltipText}
+                      aria-label={needsReauth ? 'Reconnect Drive' : `Sync Now (${statusLabel})`}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderColor: 'transparent',
+                        position: 'relative',
+                      }}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                        className={activeSyncing ? 'sync-icon-spinning' : undefined}
+                        style={{ transition: 'transform 150ms ease-out' }}
+                      >
+                        <path d="M13.5 8a5.5 5.5 0 0 1-9.39 3.89" />
+                        <path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89" />
+                        <path d="M12.5 2.5v2.75H9.75" />
+                        <path d="M3.5 13.5v-2.75h2.75" />
+                      </svg>
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          position: 'absolute',
+                          right: 4,
+                          bottom: 4,
+                          width: 6,
+                          height: 6,
+                          borderRadius: '50%',
+                          backgroundColor: dotColor,
+                          border: '1px solid var(--bg-surface)',
+                        }}
+                      />
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  style={{
+                    padding: '6px 12px 9px 12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                    }}
+                    title={tooltipText}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 7,
+                        minWidth: 0,
+                        flex: 1,
+                      }}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="var(--text-secondary)"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                        style={{ flexShrink: 0 }}
+                      >
+                        <path d="M4.5 12.25h7.25a2.5 2.5 0 0 0 .37-4.97 3.75 3.75 0 0 0-7.24-1.05A2.75 2.75 0 0 0 4.5 12.25Z" />
+                      </svg>
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: '50%',
+                          backgroundColor: dotColor,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: 11.5,
+                          color: 'var(--text-secondary)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {statusLabel}
+                      </span>
+                    </div>
+
+                    {onSyncNow && !needsReauth && (
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        onClick={onSyncNow}
+                        disabled={activeSyncing}
+                        title="Sync Now"
+                        aria-label="Sync Now"
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderColor: 'transparent',
+                          color: activeSyncing ? '#4F46E5' : 'var(--text-secondary)',
+                        }}
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                          className={activeSyncing ? 'sync-icon-spinning' : undefined}
+                          style={{ transition: 'transform 150ms ease-out' }}
+                        >
+                          <path d="M13.5 8a5.5 5.5 0 0 1-9.39 3.89" />
+                          <path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89" />
+                          <path d="M12.5 2.5v2.75H9.75" />
+                          <path d="M3.5 13.5v-2.75h2.75" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+
+                  {needsReauth && onReconnectDrive && (
+                    <button
+                      type="button"
+                      onClick={onReconnectDrive}
+                      style={{
+                        width: '100%',
+                        minHeight: 28,
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        border: '1px solid #C7D2FE',
+                        backgroundColor: '#EEF2FF',
+                        color: '#3730A3',
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      Reconnect Drive
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 

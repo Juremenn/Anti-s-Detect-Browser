@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Monitor, Moon, Save, Sun } from 'lucide-react';
+import { ChevronRight, Monitor, Moon, Save, Sun } from 'lucide-react';
+import { api } from '../api';
 import { Checkbox } from '../components/Checkbox';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { Select } from '../components/ui/Select';
@@ -22,6 +23,10 @@ export function SettingsView({
   const [browserPath, setBrowserPath] = useState(settings?.browser_path || '');
   const [startUrl, setStartUrl] = useState(settings?.start_url || 'https://browserleaks.com/canvas');
   const [maskWebRTC, setMaskWebRTC] = useState(settings?.mask_webrtc ?? true);
+  const [googleClientId, setGoogleClientId] = useState(settings?.google_client_id || '');
+  const [googleClientSecret, setGoogleClientSecret] = useState('');
+  const [showAdvancedOAuth, setShowAdvancedOAuth] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -29,18 +34,31 @@ export function SettingsView({
       setBrowserPath(settings.browser_path || '');
       setStartUrl(settings.start_url || 'https://browserleaks.com/canvas');
       setMaskWebRTC(settings.mask_webrtc ?? true);
+      setGoogleClientId(settings.google_client_id || '');
     }
   }, [settings]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    setOauthError(null);
     setSaving(true);
     try {
+      const trimmedClientId = googleClientId.trim();
+      const origClientId = (settings?.google_client_id || '').trim();
+      if (trimmedClientId && (trimmedClientId !== origClientId || googleClientSecret.trim() !== '')) {
+        await api.saveAuthConfig(
+          trimmedClientId,
+          googleClientSecret.trim() || undefined,
+        );
+        setGoogleClientSecret('');
+      }
       await onSave({
         browser_path: browserPath.trim(),
         start_url: startUrl.trim() || 'https://browserleaks.com/canvas',
         mask_webrtc: maskWebRTC,
       });
+    } catch (err: unknown) {
+      setOauthError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -249,6 +267,120 @@ export function SettingsView({
               onChange={setMaskWebRTC}
               ariaLabel={t.settings.maskWebRTC}
             />
+          </div>
+
+          {/* Collapsed Advanced Disclosure: Custom OAuth Credentials (Optional) */}
+          <div
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-panel)',
+              overflow: 'hidden',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setShowAdvancedOAuth((prev) => !prev)}
+              aria-expanded={showAdvancedOAuth}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                backgroundColor: 'transparent',
+                border: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>
+                Advanced: Custom OAuth Credentials (Optional)
+              </span>
+              <ChevronRight
+                size={14}
+                strokeWidth={1.75}
+                color="var(--text-tertiary)"
+                aria-hidden="true"
+                style={{
+                  transform: showAdvancedOAuth ? 'rotate(90deg)' : 'rotate(0deg)',
+                  transition: 'transform 140ms ease-out',
+                  flexShrink: 0,
+                }}
+              />
+            </button>
+
+            {showAdvancedOAuth && (
+              <div
+                style={{
+                  padding: '0 16px 16px 16px',
+                  borderTop: '1px solid var(--border)',
+                  paddingTop: 12,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
+                  Leave blank to use the built-in application credentials. Only fill this in to override with your own Google Desktop OAuth Client.
+                </div>
+
+                {oauthError && (
+                  <div
+                    role="alert"
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: 6,
+                      backgroundColor: '#FEF2F2',
+                      border: '1px solid #FECACA',
+                      color: '#B91C1C',
+                      fontSize: 11.5,
+                    }}
+                  >
+                    {oauthError}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label
+                    htmlFor="settings-google-client-id"
+                    style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--text-secondary)' }}
+                  >
+                    Custom OAuth Client ID
+                  </label>
+                  <input
+                    id="settings-google-client-id"
+                    type="text"
+                    className="input-field"
+                    value={googleClientId}
+                    onChange={(e) => setGoogleClientId(e.target.value)}
+                    placeholder="xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com"
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label
+                    htmlFor="settings-google-client-secret"
+                    style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--text-secondary)' }}
+                  >
+                    {settings?.has_client_secret
+                      ? 'Custom Client Secret (saved, leave blank to keep existing)'
+                      : 'Custom Client Secret (optional)'}
+                  </label>
+                  <input
+                    id="settings-google-client-secret"
+                    type="password"
+                    className="input-field"
+                    value={googleClientSecret}
+                    onChange={(e) => setGoogleClientSecret(e.target.value)}
+                    placeholder="GOCSPX-..."
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </form>
       </div>
